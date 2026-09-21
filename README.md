@@ -93,3 +93,5 @@ npm run test:mihomo # 用本机 mihomo 内核校验产出配置
 ## License
 
 MIT
+
+本项目源码：<https://github.com/macanine/zjumihomo-converter>

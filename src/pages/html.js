@@ -143,6 +143,7 @@ function gen_html(pre) {
 
   <footer class="text-center mt-3">
     规则来自 <a href="https://github.com/ACL4SSR/ACL4SSR" class="text-decoration-none">ACL4SSR</a>
+    · 源码在 <a href="https://github.com/macanine/zjumihomo-converter" class="text-decoration-none">GitHub</a>
   </footer>
 </div>
 

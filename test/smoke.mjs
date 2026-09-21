@@ -116,6 +116,8 @@ const sub = (list, caseNo = 0) =>
   check('表单页含覆写开关', /id="ovr"/.test(r.body), '缺少 ovr 开关');
   check('表单页引入 Bootstrap', /bootstrap@[\d.]+/.test(r.body), '未引入 Bootstrap');
   check('表单页含一键导入', /'clash:\/\/install-config\?url='/.test(r.body), '缺少 clash:// 导入');
+  check('表单页底部带仓库链接',
+    /github\.com\/macanine\/zjumihomo-converter/.test(r.body), '页脚缺少仓库链接');
   // 端口和 UI 密钥不再给用户配置，改由 src/config.js 的默认值决定
   check('表单页不再暴露端口/密钥', !/id="(mp|sp|hp|rp|tp|secret)"/.test(r.body), '仍在渲染端口输入框');
 }
