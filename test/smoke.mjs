@@ -149,6 +149,11 @@ const sub = (list, caseNo = 0) =>
   check('空订阅返回 404', r.status === 404, 'status=' + r.status);
 }
 {
+  // 缺少 url 参数时应在解析节点前就返回 404，而不是在 u.replaceAll 上崩掉
+  const r = await request('/' + KEY + '/sub?target=clash');
+  check('缺少 url 参数返回 404 而非崩溃', r.status === 404, 'status=' + r.status);
+}
+{
   const r = await request(sub(['not-a-valid-node']));
   check('无效节点返回 404', r.status === 404, 'status=' + r.status);
 }

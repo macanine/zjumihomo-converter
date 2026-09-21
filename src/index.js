@@ -29,7 +29,7 @@ export default {
         let par = url.searchParams;
         let t = par.get('target');
         let u = par.get('url');
-        if (url) {
+        if (u) {
           u = u.replaceAll('|', '\n');
         }
 
