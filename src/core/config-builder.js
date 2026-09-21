@@ -23,7 +23,7 @@ const FALLBACK_RULES = [
 const DEFAULT_OVERRIDE = true;
 
 
-async function gen_cfg(data, udp_en, tfo_en, mp, sp, rp, hp, tp, dns, secret, listmode, rules_sel, ovr) {
+async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
   let proxy = {}, nodes_name;
   let cfg;
 
@@ -148,18 +148,6 @@ async function gen_cfg(data, udp_en, tfo_en, mp, sp, rp, hp, tp, dns, secret, li
       }
     }
 
-    // 处理端口、DNS、密码等个性化参数
-    let v = { "mixed-port": mp, "socks-port": sp, "redir-port": rp, "port": hp, "tproxy-port": tp };
-    for (let j in v) {
-      try {
-        if (/^\d+$/.test(v[j])) {
-          let i = parseInt(v[j], 10);
-          if (i == 0) delete cfg[j];
-          else if (i > 0 && i < 65536) cfg[j] = i;
-        }
-      } catch (e) { }
-    }
-
     // 修改DNS配置
     if (dns === '0') {
       delete cfg['dns'];
@@ -173,14 +161,11 @@ async function gen_cfg(data, udp_en, tfo_en, mp, sp, rp, hp, tp, dns, secret, li
         }
       } catch (e) { }
     }
-
-    // UI访问密钥
-    if (secret) {
-      cfg["secret"] = secret;
-    }
   }
 
-  return { 'data': cfg, 'up': proxy.up, 'dn': proxy.dn, 'to': proxy.to, 'ex': proxy.ex };
+  // 端口、external-controller 密钥等一律用 config.js 里的默认值，
+  // 不再开放 URL 参数（模板本身就是给这个部署场景调的）。
+  return { 'data': cfg, 'up': proxy.up, 'dn': proxy.dn, 'to': proxy.to, 'ex': proxy.ex, 'sub_name': proxy.sub_name };
 }
 
 export { gen_cfg };

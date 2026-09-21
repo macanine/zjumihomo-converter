@@ -113,11 +113,10 @@ for (const p of PRESETS) {
 // 2. 参数组合
 const combos = [
   ['udp/tfo', 'udp=1&tfo=1'],
-  ['端口', 'mp=1080&sp=1081&hp=70000&tp=7899'],
   ['dns=2', 'dns=2'],
   ['dns=0', 'dns=0'],
-  ['secret', 'secret=mysecret123'],
-  ['全参数', 'udp=1&tfo=1&mp=1080&sp=1081&dns=1&secret=abc123'],
+  // 老的订阅链接里可能还留着端口/密钥参数，忽略掉之后配置仍须合法
+  ['遗留端口参数', 'mp=1080&sp=1081&secret=abc123'],
   ['关闭覆写', 'ovr=0'],
 ];
 for (const [label, q] of combos) {

@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
 import { get_ua_default } from './globals.js';
 import { isValidUrl, contentTypeIsText, decodeBase64 } from './utils.js';
+import { name_from_headers } from './sub-name.js';
 import { decode_ss } from '../protocols/ss.js';
 import { decode_ssr } from '../protocols/ssr.js';
 import { decode_vmess } from '../protocols/vmess.js';
@@ -23,6 +24,11 @@ async function gen_nodes(data, proxy) {
     dn = data.dn; // download
     to = data.to; // total
     ex = data.ex; // expire
+
+    // 上游响应头里带的订阅名，最终由 index.js 放进 Content-Disposition
+    if (data.name && !proxy.sub_name) {
+      proxy.sub_name = data.name;
+    }
 
     if (!isNaN(up) && !isNaN(dn) && !isNaN(to) && !isNaN(ex)) {
       if (!isNaN(proxy.up) && !isNaN(proxy.dn) && !isNaN(proxy.to) && !isNaN(proxy.ex)) {
@@ -133,10 +139,9 @@ async function decode_link(url) {
     }
   } catch (e) { }
 
-  if (!isNaN(up) && !isNaN(dn) && !isNaN(to) && !isNaN(ex)) {
-    return { 'data': t, 'up': up, 'dn': dn, 'to': to, 'ex': ex };
-  }
-  return t;
+  // 一直返回对象：订阅名要跟着节点数据一起带出去，交给响应头用。
+  // 流量字段可能是 NaN，gen_nodes 里的 isNaN 判断会跳过。
+  return { 'data': t, 'name': name_from_headers(r.headers), 'up': up, 'dn': dn, 'to': to, 'ex': ex };
 }
 
 export { gen_nodes, decode_link };

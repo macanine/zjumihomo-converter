@@ -2,6 +2,7 @@ import yaml from 'js-yaml';
 
 import { key_default, set_ua_default } from './core/globals.js';
 import { gen_cfg } from './core/config-builder.js';
+import { content_disposition } from './core/sub-name.js';
 import { nginx } from './pages/nginx.js';
 import { gen_html } from './pages/html.js';
 import { gen_icon } from './pages/favicon.js';
@@ -33,8 +34,8 @@ export default {
           u = u.replaceAll('|', '\n');
         }
 
-        // 其他配置参数
-        let varnamelist = ['udp', 'tfo', 'mp', 'sp', 'rp', 'hp', 'tp', 'dns', 'secret', 'list', 'rules', 'ovr'];
+        // 其他配置参数。端口和 UI 密钥不再开放，用 src/config.js 里的默认值。
+        let varnamelist = ['udp', 'tfo', 'dns', 'list', 'rules', 'ovr'];
         let varlist = [];
         varnamelist.forEach((v) => {
           let w = par.get(v) || undefined;
@@ -51,6 +52,11 @@ export default {
             let ex = x.ex;
             if (!isNaN(up) && !isNaN(dn) && !isNaN(to) && !isNaN(ex)) {
               headers['Subscription-Userinfo'] = `upload=${up}; download=${dn}; total=${to}; expire=${ex}`;
+            }
+            // 客户端拿它给新配置命名，否则名字就是 URL 末段「sub」
+            let cd = content_disposition(x.sub_name, u);
+            if (cd) {
+              headers['Content-Disposition'] = cd;
             }
             return new Response(y, { status: 200, headers });
           } else {

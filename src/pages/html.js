@@ -20,7 +20,6 @@ function gen_html(pre) {
   .hint { font-size: .78rem; color: #8a9199; }
   .form-control, .form-select { font-size: .9rem; }
   textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
-  .port-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .5rem .75rem; }
   .section + .section { border-top: 1px solid #eef0f2; margin-top: 1.25rem; padding-top: 1.25rem; }
   .out { background: #fbfbfc; }
   footer { font-size: .78rem; color: #9aa1a9; }
@@ -115,30 +114,6 @@ function gen_html(pre) {
       </div>
 
       <div class="section">
-        <div class="form-label">端口（留空为默认，填 0 表示禁用）</div>
-        <div class="port-grid">
-          <div>
-            <input type="text" id="mp" class="form-control form-control-sm" placeholder="mixed-port">
-          </div>
-          <div>
-            <input type="text" id="sp" class="form-control form-control-sm" placeholder="socks-port">
-          </div>
-          <div>
-            <input type="text" id="hp" class="form-control form-control-sm" placeholder="port">
-          </div>
-          <div>
-            <input type="text" id="rp" class="form-control form-control-sm" placeholder="redir-port">
-          </div>
-          <div>
-            <input type="text" id="tp" class="form-control form-control-sm" placeholder="tproxy-port">
-          </div>
-          <div>
-            <input type="text" id="secret" class="form-control form-control-sm" placeholder="UI 访问密钥">
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" id="lm" onchange="toggleList()">
           <label class="form-check-label" for="lm">
@@ -150,11 +125,16 @@ function gen_html(pre) {
 
       <div class="section">
         <button class="btn btn-primary" onclick="processText()">生成订阅链接</button>
+        <button class="btn btn-success" onclick="importToClash()">一键导入</button>
         <button class="btn btn-outline-secondary" onclick="copyOut()">复制</button>
         <span id="copied" class="hint ms-2"></span>
         <div class="mt-3">
           <textarea id="outputText" class="form-control out" rows="3" readonly
             placeholder="生成的订阅链接会显示在这里"></textarea>
+        </div>
+        <div class="hint mt-2">
+          「一键导入」用 clash:// 唤起 Clash Verge / ClashX / Mihomo Party 等客户端；
+          没反应就复制链接到客户端里手动添加
         </div>
       </div>
 
@@ -170,7 +150,7 @@ function gen_html(pre) {
 function toggleList() {
   var on = document.getElementById('lm').checked;
   // 列表模式只输出节点，这些参数都无意义，置灰避免误解
-  ['mp', 'sp', 'hp', 'rp', 'tp', 'secret', 'rules', 'dns', 'ovr'].forEach(function (id) {
+  ['rules', 'dns', 'ovr'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.disabled = on;
@@ -201,19 +181,9 @@ function processText() {
   if (document.getElementById('lm').checked) {
     js['list'] = 'true';
   } else {
-    ['mp', 'sp', 'hp', 'rp', 'tp'].forEach(function (id) {
-      try {
-        var v = parseInt(document.getElementById(id).value, 10);
-        if (v >= 0 && v < 65536) { js[id] = v; }
-      } catch (e) {}
-    });
     try {
       var dns = document.getElementById('dns').value;
       if (dns) { js['dns'] = dns; }
-    } catch (e) {}
-    try {
-      var sec = document.getElementById('secret').value.trim();
-      if (/^[0-9a-zA-Z]+$/.test(sec)) { js.secret = sec; }
     } catch (e) {}
     try {
       var rl = document.getElementById('rules').value;
@@ -229,6 +199,22 @@ function processText() {
   document.getElementById('outputText').value =
     '${pre}' + new URLSearchParams(js).toString();
   document.getElementById('copied').textContent = '';
+}
+
+// 唤起本机 Clash 客户端导入订阅。clash://install-config?url= 是 Clash Verge、
+// ClashX、Mihomo Party 等客户端通用的一键导入协议。url 必须放在最后：
+// Clash Verge 把 url= 之后的整串都当成订阅地址。
+function importToClash() {
+  processText();
+  var el = document.getElementById('outputText');
+  var tip = document.getElementById('copied');
+  if (!el.value) { return; }
+  try {
+    location.href = 'clash://install-config?url=' + encodeURIComponent(el.value);
+    tip.textContent = '已唤起 Clash，没反应就复制链接手动导入';
+  } catch (e) {
+    tip.textContent = '未能唤起 Clash，请复制链接手动导入';
+  }
 }
 
 function copyOut() {

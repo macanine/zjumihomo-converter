@@ -22,6 +22,7 @@ src/
 │   ├── nodes.js          订阅解析：递归展开 base64、按行识别节点链接
 │   ├── config-builder.js 组装最终配置：去重、重命名、注入策略组、应用覆写
 │   ├── rules-fetcher.js  运行时从 ACL4SSR 拉取分流规则
+│   ├── sub-name.js       推导订阅名 → Content-Disposition（客户端拿它命名配置）
 │   └── override.js       应用 zju-override.yaml（节点/策略组/置顶规则）
 ├── protocols/            每个协议一个文件，各自导出 decode_xxx()
 └── pages/                静态页面：nginx.js（伪装首页）html.js（表单）favicon.js
@@ -88,10 +89,39 @@ FINAL                         → MATCH,🐟 漏网之鱼
 ACL4SSR 的 `ProxyMedia.list` 里有 `URL-REGEX`，mihomo v1.19 已移除该类型支持，
 留着会让整份配置加载失败。`rules-fetcher.js` 的 `KNOWN_TYPES` 维护白名单。
 
+### 订阅名走 Content-Disposition，不是 URL 末段
+
+客户端导入订阅时用的名字来自响应头，不给我们就得拿 URL 末段——也就是接口名 `sub`。
+三个客户端的取值顺序（读源码确认过）：`name=` 参数 → `Content-Disposition` 的文件名 →
+URL 末段。所以名字由 `sub-name.js` 推导后写进 `Content-Disposition`，来源按可信度：
+上游响应头里的文件名 → 订阅链接末段 → 主机名。
+
+写这个名字时有两个坑：
+
+- **非 ASCII 名不能放进 `filename=`**：HTTP 头塞不下中文，Worker 会直接抛错。中文名走
+  RFC 5987 的 `filename*=UTF-8''%xx`，`filename=` 里只放 ASCII 兜底（通常是主机名）。
+- **`filename*` 必须排在最后**，单引号必须转义：Mihomo Party 按 `filename*=.*''` 切分后把
+  剩余部分整个拿去 `decodeURIComponent`，单引号没转义的话 Clash Verge 按 `''` 切分又会切坏。
+  实测格式（与 subconverter 一致）：`attachment; filename="<ascii>"; filename*=UTF-8''<pct>`。
+
+名字还会被客户端当文件名用，所以 `sub-name.js` 里要删掉路径分隔符和控制字符。
+
+### 「一键导入」用 clash:// 协议
+
+表单的「一键导入」拼 `clash://install-config?url=<编码后的订阅地址>`，Clash Verge、ClashX、
+Mihomo Party 都认这个协议。**`url=` 必须放在最后**：Clash Verge 的解析是找 `url=` 子串后
+把剩余整串都当订阅地址（`utils/resolve/scheme.rs`），后面再接参数会被吃进 URL 里。
+
+### 端口和 UI 密钥不做成参数
+
+`mixed-port` / `socks-port` / `redir-port` / `tproxy-port` / `port` / `secret` 一律用
+`src/config.js` 的模板值，表单和 URL 参数都不再暴露（改端口就改 `config.js`）。
+`mp` `sp` `hp` `rp` `tp` `secret` 这些老参数会被静默忽略。
+
 ## 测试
 
 ```bash
-npm test            # 62 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
+npm test            # 72 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
 npm run test:mihomo # 用本机 mihomo 内核校验产出配置，需要网络
 ```
 

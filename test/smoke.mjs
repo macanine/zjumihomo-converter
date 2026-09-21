@@ -115,6 +115,9 @@ const sub = (list, caseNo = 0) =>
   check('表单页含规则选择器', /id="rules"/.test(r.body), '缺少 rules 下拉');
   check('表单页含覆写开关', /id="ovr"/.test(r.body), '缺少 ovr 开关');
   check('表单页引入 Bootstrap', /bootstrap@[\d.]+/.test(r.body), '未引入 Bootstrap');
+  check('表单页含一键导入', /'clash:\/\/install-config\?url='/.test(r.body), '缺少 clash:// 导入');
+  // 端口和 UI 密钥不再给用户配置，改由 src/config.js 的默认值决定
+  check('表单页不再暴露端口/密钥', !/id="(mp|sp|hp|rp|tp|secret)"/.test(r.body), '仍在渲染端口输入框');
 }
 {
   const r = await request('/favicon.ico');
@@ -147,11 +150,6 @@ const sub = (list, caseNo = 0) =>
 {
   const r = await request('/' + KEY + '/sub?target=clash&url=');
   check('空订阅返回 404', r.status === 404, 'status=' + r.status);
-}
-{
-  // 缺少 url 参数时应在解析节点前就返回 404，而不是在 u.replaceAll 上崩掉
-  const r = await request('/' + KEY + '/sub?target=clash');
-  check('缺少 url 参数返回 404 而非崩溃', r.status === 404, 'status=' + r.status);
 }
 {
   const r = await request(sub(['not-a-valid-node']));
@@ -194,9 +192,15 @@ const sub = (list, caseNo = 0) =>
   // 参数覆盖
   const r = await request(sub(NODES) + '&udp=1&tfo=1&mp=1080&dns=0&secret=mysecret');
   check('个性化参数被接受', r.status === 200, 'status=' + r.status);
-  check('端口参数生效', r.body.includes('mixed-port: 1080'), '未找到 mixed-port: 1080');
   check('dns=0 移除 dns 段', !/^dns:/m.test(r.body), '仍存在 dns 段');
-  check('secret 参数生效', r.body.includes('mysecret'), '未找到 secret');
+  // 端口和 UI 密钥已不再开放：这些参数必须被忽略，否则等于给了半套配置入口
+  check('端口参数被忽略', r.body.includes('mixed-port: 7890') && !r.body.includes('mixed-port: 1080'), '端口参数仍然生效');
+  check('secret 参数被忽略', !r.body.includes('mysecret'), 'secret 仍然生效');
+}
+{
+  // 缺少 url 参数时应在解析节点前就返回 404，而不是在 u.replaceAll 上崩掉
+  const r = await request('/' + KEY + '/sub?target=clash');
+  check('缺少 url 参数返回 404 而非崩溃', r.status === 404, 'status=' + r.status);
 }
 {
   // 去重
@@ -214,6 +218,73 @@ const sub = (list, caseNo = 0) =>
   check('环境变量覆盖默认密钥', r.status === 200, 'status=' + r.status);
   const r2 = await request('/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES[0]), { env: { key: 'mykey' } });
   check('覆盖后默认密钥失效', r2.status === 404, 'status=' + r2.status);
+}
+
+/* ── 订阅命名（Content-Disposition）──
+ * 客户端（Clash Verge / Mihomo Party / ClashX）导入订阅时都用这个响应头给配置命名，
+ * 没有它就只剩 URL 末段「sub」当名字。名字来源按可信度：上游文件名 → 订阅链接末段 → 主机名。 */
+{
+  // 上游响应头里的文件名最可信（机场自己起的名）。
+  // 中文名只能走 RFC 5987 的 filename*：filename= 里放不下非 ASCII 字符。
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.includes('airport.example.com')) {
+      return new Response(NODES[0], {
+        status: 200,
+        headers: {
+          'content-type': 'text/plain',
+          'content-disposition': "attachment; filename=\"x.yaml\"; filename*=UTF-8''%E6%9C%BA%E5%9C%BA%E7%94%B2",
+        },
+      });
+    }
+    return rulesStub(req);
+  };
+  const r = await request(sub(['https://airport.example.com/api/v1/client/subscribe?token=x']), { upstream });
+  const cd = r.headers.get('content-disposition') || '';
+  check('订阅名取自上游文件名', cd.includes("filename*=UTF-8''%E6%9C%BA%E5%9C%BA%E7%94%B2"), 'cd=' + cd);
+  check('非 ASCII 名不写进 filename=', /filename="[0-9A-Za-z.-]+"/.test(cd), 'cd=' + cd);
+}
+{
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.includes('airport.example.com')) {
+      return new Response(NODES[0], { status: 200, headers: { 'content-type': 'text/plain' } });
+    }
+    return rulesStub(req);
+  };
+  const r = await request(sub(['https://airport.example.com/link/MyAirport2026?token=x']), { upstream });
+  check('订阅名退到订阅链接末段',
+    /filename\*=UTF-8''MyAirport2026/.test(r.headers.get('content-disposition') || ''),
+    'cd=' + r.headers.get('content-disposition'));
+  // 末段是 /api/v1/client/subscribe 这类通用端点名，没有信息量，改用主机名
+  const r2 = await request(sub(['https://airport.example.com/api/v1/client/subscribe?token=x']), { upstream });
+  check('末段无信息量时用主机名',
+    /filename\*=UTF-8''airport\.example\.com/.test(r2.headers.get('content-disposition') || ''),
+    'cd=' + r2.headers.get('content-disposition'));
+}
+{
+  // 名字会变成客户端里的文件名，路径分隔符和单引号必须处理干净：
+  // 前者能写到配置目录之外，后者会被客户端按 charset'' 切分时切坏
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.includes('airport.example.com')) {
+      return new Response(NODES[0], {
+        status: 200,
+        headers: { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="../../Bob\'s/airport"' },
+      });
+    }
+    return rulesStub(req);
+  };
+  const r = await request(sub(['https://airport.example.com/link/x']), { upstream });
+  const cd = r.headers.get('content-disposition') || '';
+  check('名字里的路径分隔符被删掉', cd.length > 0 && !cd.includes('..') && !cd.includes('/'), 'cd=' + cd);
+  check('名字里的单引号被转义', !/filename\*=UTF-8''[^;]*'/.test(cd), 'cd=' + cd);
+}
+{
+  // 直接粘节点/内容时没有来源名字，就不编一个，交给客户端自己的兜底规则
+  const r = await request(sub(NODES.slice(0, 2)));
+  check('无来源名字时不发 Content-Disposition', r.headers.get('content-disposition') === null,
+    'cd=' + r.headers.get('content-disposition'));
 }
 
 /* ── 分流规则：ACL4SSR 运行时拉取 ──

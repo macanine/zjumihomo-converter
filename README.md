@@ -9,6 +9,10 @@ Clash 订阅转换器，为**浙江大学校园网**环境定制。
 
 纯 JavaScript，零依赖，部署在 **Cloudflare Pages** 上，产物是单个自包含的 worker 文件。
 
+本项目基于 [Js-Sung/sub2clashmeta](https://github.com/Js-Sung/sub2clashmeta) 改造：上游负责
+通用的订阅转换，这里在其之上加了校园网覆写、运行时拉取 ACL4SSR 规则等定制，并把单文件的
+`dist/_worker.js` 拆成 `src/` 下可维护的模块。感谢原作者。
+
 ## 快速开始
 
 ```bash
@@ -27,7 +31,12 @@ npm run dev        # http://127.0.0.1:8788/sub
 https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 ```
 
-访问 `https://<域名>/<key>` 是表单页，填完订阅点「生成订阅链接」即可。
+访问 `https://<域名>/<key>` 是表单页，填完订阅点「生成订阅链接」即可。点「一键导入」会用
+`clash://install-config?url=...` 唤起本机的 Clash Verge / ClashX / Mihomo Party 等客户端
+（没装或没反应就复制链接手动添加）。
+
+导入后的配置名取自订阅本身：优先用订阅响应头里带的文件名，其次是订阅链接的末段，
+再不然是主机名；粘贴节点列表这种没有来源名字的情况才交给客户端自己定。
 
 | 参数 | 说明 |
 |---|---|
@@ -36,10 +45,12 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 | `rules` | 规则预设，默认 `mini`；还有 `mini_adblock` `mini_multi` `full` `full_adblock` 等，或直接给 .ini 的 URL |
 | `ovr` | 校园网覆写，`0` 关闭（默认开启） |
 | `udp` `tfo` | `1` 启用、`0` 禁用、`2` 默认 |
-| `mp` `sp` `hp` `rp` `tp` | mixed / socks / port / redir / tproxy 端口，填 `0` 删除该项 |
 | `dns` | `1` 启用、`2` 仅监听、`0` 禁用 |
-| `secret` | 外部控制面板密钥 |
 | `list` | `true` 时只输出 proxies 段 |
+
+端口（`mixed-port` 等）和 `external-controller` 密钥不开放参数，一律用
+[src/config.js](src/config.js) 里的模板值；老链接里遗留的 `mp` `sp` `hp` `rp` `tp` `secret`
+会被忽略。
 
 流量信息（`Subscription-Userinfo`）会透传，多个订阅合并流量、取最晚过期时间。
 
@@ -74,6 +85,7 @@ npm run test:mihomo # 用本机 mihomo 内核校验产出配置
 
 ## 参考
 
+- [Js-Sung/sub2clashmeta](https://github.com/Js-Sung/sub2clashmeta) —— **原版**，本项目的上游
 - [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) —— 分流规则来源
 - [zju-connect](https://github.com/Mythologyli/zju-connect) —— 浙大校园网连接工具
 - [SubConv](https://github.com/SubConv/SubConv)、[sublink-worker](https://github.com/7Sageer/sublink-worker)、[subconverter](https://github.com/tindy2013/subconverter)
