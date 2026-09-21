@@ -1,0 +1,19 @@
+{
+  "name": "zjumihomo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "test": "node test/smoke.mjs",
+    "predev": "npm run build",
+    "dev": "wrangler pages dev --port 8788",
+    "start": "wrangler pages dev --port 8788",
+    "predeploy": "npm run build",
+    "deploy": "wrangler pages deploy",
+    "test:mihomo": "node test/mihomo-check.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

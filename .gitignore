@@ -1,0 +1,11 @@
+# 依赖与本地缓存
+/node_modules/
+/.wrangler/
+.dev.vars
+
+# dist/ 由 npm run build 从 src/ 生成，不纳入版本控制。
+# Cloudflare Pages 会执行构建命令，产物在构建阶段产生。
+/dist/
+
+# 系统文件
+.DS_Store

@@ -1,0 +1,38 @@
+# 浙大校园网环境覆写片段
+#
+# 这个文件在每次转换时被读取并合并进最终配置：
+#   - proxies:      追加 ZJUconnect 节点（本机 zju-connect 提供的 SOCKS5 入口）
+#   - proxy-groups: 追加「校园网」策略组，可在 Clash 里手动切换走直连
+#   - rules:        置顶插入，优先于 ACL4SSR 拉回来的规则
+#
+# 规则置顶的原因：ACL4SSR 里有 GEOIP,CN,🎯 全球直连 之类的兜底规则，
+# 如果校园网规则排在后面就永远匹配不到，所以这几条必须放在最前面。
+#
+# 注意 vpn/rvpn/webvpn 三条走 DIRECT 而不是「校园网」：
+# 登录门户本身要在校外网络可达，走 zju-connect 会绕回去导致连不上。
+
+proxies:
+  - name: ZJUconnect
+    type: socks5
+    server: 127.0.0.1
+    port: 1090
+    udp: true
+
+proxy-groups:
+  # DIRECT 放在第一位 = 默认选中直连。校园网资源本来就该直连访问，
+  # 只有在需要 zju-connect 兜底时才手动切到 ZJUconnect。
+  - name: 🏫 校园网
+    type: select
+    proxies:
+      - DIRECT
+      - ZJUconnect
+
+rules:
+  - DOMAIN,vpn.zju.edu.cn,DIRECT
+  - DOMAIN,rvpn.zju.edu.cn,DIRECT
+  - DOMAIN,webvpn.zju.edu.cn,DIRECT
+  - DOMAIN-SUFFIX,zju.edu.cn,🏫 校园网
+  - DOMAIN-SUFFIX,zjusec.com,🏫 校园网
+  - DOMAIN-SUFFIX,cc98.org,🏫 校园网
+  - IP-CIDR,10.0.0.0/8,🏫 校园网,no-resolve
+  - IP-CIDR,172.16.0.0/12,🏫 校园网,no-resolve
