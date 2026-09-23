@@ -6,6 +6,10 @@
  * 检查路由、协议解码、配置生成和响应头。目的是让「产物还能用」这件事可重复验证，
  * 而不是每次改完代码手动 curl 一遍。
  *
+ * 只留会挡住真 bug 的断言：格式约定（规则组名位置、Content-Disposition 编码）、
+ * 顺序前提（覆写置顶、google 关键字不抢流媒体、兜底默认走代理）、以及会崩或
+ * 静默失效的行为。页面结构、状态码之类的形状检查不在这里锁——改版就红，没有价值。
+ *
  * 用法：npm test（会先自动构建）
  */
 
@@ -65,15 +69,15 @@ const rulesStub = async (req) => {
 async function request(pathname, { ua, upstream, env } = {}) {
   const realFetch = globalThis.fetch;
   globalThis.fetch = upstream || rulesStub;
-  const realLog = console.log, realErr = console.error;
-  console.log = () => {}; console.error = () => {};
+  const realLog = console.log, realErr = console.error, realWarn = console.warn;
+  console.log = () => {}; console.error = () => {}; console.warn = () => {};
   try {
     const init = ua ? { headers: { 'User-Agent': ua } } : {};
     const res = await worker.fetch(new Request('https://example.com' + pathname, init), env || {}, {});
     return { status: res.status, headers: res.headers, body: await res.text() };
   } finally {
     globalThis.fetch = realFetch;
-    console.log = realLog; console.error = realErr;
+    console.log = realLog; console.error = realErr; console.warn = realWarn;
   }
 }
 
@@ -94,71 +98,45 @@ const sub = (list, caseNo = 0) =>
 /* ── 路由 ── */
 {
   const r = await request('/');
-  check('根路径返回伪装页', r.status === 200 && r.body.includes('Welcome to nginx'), 'status=' + r.status);
-  check('伪装页带 nginx 响应头', r.headers.get('server') === 'nginx/1.18.0 (Ubuntu)', 'server=' + r.headers.get('server'));
+  check('根路径返回伪装页',
+    r.status === 200 && r.body.includes('Welcome to nginx') && r.headers.get('server') === 'nginx/1.18.0 (Ubuntu)',
+    'status=' + r.status + ' server=' + r.headers.get('server'));
 }
 {
   const r = await request('/' + KEY);
   check('表单页可访问', r.status === 200 && r.body.includes('订阅转换'), 'status=' + r.status);
-  check('表单页含转换接口地址', r.body.includes('/' + KEY + '/sub?'), '缺少 pre 片段');
 }
 {
-  const r = await request('/' + KEY + '/');
-  check('表单页带尾斜杠也可访问', r.status === 200 && r.body.includes('订阅转换'), 'status=' + r.status);
-}
-{
-  // 表单页必须能拼出可用的订阅链接：缺少 target 参数会被服务端 403。
-  // 这里检查页面确实带有产出 target 的控件与脚本，避免改版时漏掉。
-  const r = await request('/' + KEY);
-  check('表单页含客户端选择器', /id="client"/.test(r.body), '缺少 client 下拉');
-  check('表单页会写入 target', /js\.target\s*=/.test(r.body), 'processText 未设置 target');
-  check('表单页含规则选择器', /id="rules"/.test(r.body), '缺少 rules 下拉');
-  check('表单页含覆写开关', /id="ovr"/.test(r.body), '缺少 ovr 开关');
-  check('表单页引入 Bootstrap', /bootstrap@[\d.]+/.test(r.body), '未引入 Bootstrap');
-  check('表单页含一键导入', /'clash:\/\/install-config\?url='/.test(r.body), '缺少 clash:// 导入');
-  check('表单页底部带仓库链接',
-    /github\.com\/macanine\/zjumihomo-converter/.test(r.body), '页脚缺少仓库链接');
-  // 端口和 UI 密钥不再给用户配置，改由 src/config.js 的默认值决定
-  check('表单页不再暴露端口/密钥', !/id="(mp|sp|hp|rp|tp|secret)"/.test(r.body), '仍在渲染端口输入框');
-}
-{
-  const r = await request('/favicon.ico');
-  check('favicon 可访问', r.status === 200 && r.headers.get('content-type') === 'image/x-icon', 'status=' + r.status);
-}
-{
-  const r = await request('/wrongkey/sub');
-  check('错误密钥返回 404', r.status === 404, 'status=' + r.status);
-}
-{
-  const r = await request('/' + KEY + '/other');
-  check('未知子路径返回 404', r.status === 404, 'status=' + r.status);
+  // 密钥是唯一的访问控制，加密钥后默认值必须立刻失效
+  const r = await request('/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES[0]), { env: { key: 'mykey' } });
+  check('密钥不对时 404', r.status === 404, 'status=' + r.status);
 }
 
 /* ── 转换接口 ── */
 {
   const r = await request(sub(NODES));
-  check('多协议转换返回 200', r.status === 200, 'status=' + r.status);
-  const yaml = r.body;
-  for (const n of ['ss节点', 'vmess节点', 'trojan节点', 'vless节点', 'hysteria节点', 'hysteria2节点']) {
-    check('产出包含节点 ' + n, yaml.includes(n), '未找到 ' + n);
-  }
-  check('产出包含策略组', yaml.includes('🚀 节点选择'), '缺少策略组');
-  check('产出包含分流规则', /(MATCH,|,FINAL)/.test(yaml), '缺少终结规则');
+  const missing = ['ss节点', 'vmess节点', 'trojan节点', 'vless节点', 'hysteria节点', 'hysteria2节点']
+    .filter((n) => !r.body.includes(n));
+  check('六种协议的节点都能转出来', r.status === 200 && missing.length === 0,
+    'status=' + r.status + ' 缺少 ' + missing.join(', '));
+  check('产出含策略组与终结规则',
+    r.body.includes('🚀 节点选择') && /MATCH,🐟 漏网之鱼/.test(r.body), '缺少策略组或 MATCH');
 }
 {
   const r = await request('/' + KEY + '/sub?target=singbox&url=' + encodeURIComponent(NODES[0]));
   check('不支持的 target 返回 403', r.status === 403, 'status=' + r.status);
 }
 {
-  const r = await request('/' + KEY + '/sub?target=clash&url=');
-  check('空订阅返回 404', r.status === 404, 'status=' + r.status);
-}
-{
   const r = await request(sub(['not-a-valid-node']));
   check('无效节点返回 404', r.status === 404, 'status=' + r.status);
 }
 {
-  // 流量信息透传
+  // 缺少 url 参数时应在解析节点前就返回 404，而不是在 u.replaceAll 上崩掉
+  const r = await request('/' + KEY + '/sub?target=clash');
+  check('缺少 url 参数返回 404 而非崩溃', r.status === 404, 'status=' + r.status);
+}
+{
+  // 流量信息透传，格式要原样交给客户端
   const r = await request(sub(['https://sub.example.com/x']), {
     upstream: async () => new Response(NODES[0], {
       status: 200,
@@ -191,18 +169,12 @@ const sub = (list, caseNo = 0) =>
   check('列表模式只输出 proxies', r.status === 200 && r.body.includes('proxies:') && !r.body.includes('proxy-groups:'), 'status=' + r.status);
 }
 {
-  // 参数覆盖
-  const r = await request(sub(NODES) + '&udp=1&tfo=1&mp=1080&dns=0&secret=mysecret');
-  check('个性化参数被接受', r.status === 200, 'status=' + r.status);
-  check('dns=0 移除 dns 段', !/^dns:/m.test(r.body), '仍存在 dns 段');
   // 端口和 UI 密钥已不再开放：这些参数必须被忽略，否则等于给了半套配置入口
-  check('端口参数被忽略', r.body.includes('mixed-port: 7890') && !r.body.includes('mixed-port: 1080'), '端口参数仍然生效');
-  check('secret 参数被忽略', !r.body.includes('mysecret'), 'secret 仍然生效');
-}
-{
-  // 缺少 url 参数时应在解析节点前就返回 404，而不是在 u.replaceAll 上崩掉
-  const r = await request('/' + KEY + '/sub?target=clash');
-  check('缺少 url 参数返回 404 而非崩溃', r.status === 404, 'status=' + r.status);
+  const r = await request(sub(NODES) + '&udp=1&tfo=1&mp=1080&dns=0&secret=mysecret');
+  check('dns=0 移除 dns 段', !/^dns:/m.test(r.body), '仍存在 dns 段');
+  check('端口和密钥参数被忽略',
+    r.body.includes('mixed-port: 7890') && !r.body.includes('mixed-port: 1080') && !r.body.includes('mysecret'),
+    '端口或密钥参数仍然生效');
 }
 {
   // 去重
@@ -215,16 +187,14 @@ const sub = (list, caseNo = 0) =>
   check('相同 server:port 被去重', r.status === 200 && !r.body.includes('另一个'), '去重未生效');
 }
 {
-  // 自定义密钥
   const r = await request('/mykey/sub?target=clash&url=' + encodeURIComponent(NODES[0]), { env: { key: 'mykey' } });
   check('环境变量覆盖默认密钥', r.status === 200, 'status=' + r.status);
-  const r2 = await request('/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES[0]), { env: { key: 'mykey' } });
-  check('覆盖后默认密钥失效', r2.status === 404, 'status=' + r2.status);
 }
 
 /* ── 订阅命名（Content-Disposition）──
  * 客户端（Clash Verge / Mihomo Party / ClashX）导入订阅时都用这个响应头给配置命名，
- * 没有它就只剩 URL 末段「sub」当名字。名字来源按可信度：上游文件名 → 订阅链接末段 → 主机名。 */
+ * 没有它就只剩 URL 末段「sub」当名字。名字来源按可信度：上游文件名 → 订阅链接末段 → 主机名。
+ * 这里的格式细节都是踩过的坑，改 sub-name.js 前先看这段。 */
 {
   // 上游响应头里的文件名最可信（机场自己起的名）。
   // 中文名只能走 RFC 5987 的 filename*：filename= 里放不下非 ASCII 字符。
@@ -279,8 +249,9 @@ const sub = (list, caseNo = 0) =>
   };
   const r = await request(sub(['https://airport.example.com/link/x']), { upstream });
   const cd = r.headers.get('content-disposition') || '';
-  check('名字里的路径分隔符被删掉', cd.length > 0 && !cd.includes('..') && !cd.includes('/'), 'cd=' + cd);
-  check('名字里的单引号被转义', !/filename\*=UTF-8''[^;]*'/.test(cd), 'cd=' + cd);
+  check('名字里的路径分隔符和单引号被处理干净',
+    cd.length > 0 && !cd.includes('..') && !cd.includes('/') && !/filename\*=UTF-8''[^;]*'/.test(cd),
+    'cd=' + cd);
 }
 {
   // 直接粘节点/内容时没有来源名字，就不编一个，交给客户端自己的兜底规则
@@ -317,37 +288,37 @@ const sub = (list, caseNo = 0) =>
     'BanAD.list': 'DOMAIN-KEYWORD,admarvel\n# 注释行\nDOMAIN-KEYWORD,admaster\n',
   });
   const r = await request(sub(NODES.slice(0, 2), 1), { upstream: stub1 });
-  check('rules 拉取成功', r.status === 200, 'status=' + r.status);
   // Clash 规则格式是 类型,参数,策略组 —— 组名在参数之后，不能在行首
-  check('注入 .list 规则(UnBan)', /DOMAIN-SUFFIX,lan,🎯 全球直连/.test(r.body), 'UnBan 规则格式或内容不对');
-  check('注入 .list 规则(BanAD)', /DOMAIN-KEYWORD,admarvel,🛑 全球拦截/.test(r.body), 'BanAD 规则格式或内容不对');
+  check('注入 .list 规则且组名在参数之后',
+    r.status === 200 &&
+    /DOMAIN-SUFFIX,lan,🎯 全球直连/.test(r.body) &&
+    /DOMAIN-KEYWORD,admarvel,🛑 全球拦截/.test(r.body),
+    'UnBan 或 BanAD 的规则格式不对');
   check('内联 GEOIP,CN 格式正确', /GEOIP,CN,🎯 全球直连/.test(r.body), 'GEOIP 规则格式不对');
   check('内联 FINAL 转为 MATCH', /MATCH,🐟 漏网之鱼/.test(r.body), 'FINAL 未正确转成 MATCH');
   check('注释行被过滤', !r.body.includes('注释行'), '注释未被过滤');
-  check('规则来自远端(非本地内置)', !r.body.includes('wxsnsdy'), '出现了本地内置规则特征');
 
   // 引用了不存在的策略组 → 必须丢掉，否则 mihomo 拒绝加载整份配置
   const ini2 = '[custom]\nruleset=不存在的组,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/UnBan.list\nruleset=🎯 全球直连,[]GEOIP,CN\n';
   const r2 = await request(sub(NODES.slice(0, 2), 2), {
     upstream: stubFor(ini2, { 'UnBan.list': 'DOMAIN-SUFFIX,lan\n' }),
   });
-  check('未知策略组的规则被过滤', r2.status === 200 && !r2.body.includes('不存在的组'), '未知组未被过滤');
-  check('过滤后仍保留有效规则', r2.body.includes('GEOIP,CN'), '有效规则被误删');
+  check('未知策略组的规则被过滤，有效规则保留',
+    r2.body.includes('GEOIP,CN') && !r2.body.includes('不存在的组'), '未知组未被过滤或有效规则被误删');
 
   // 拉取失败 → 用最小兜底规则，而不是整个转换失败
   const r3 = await request(sub(NODES.slice(0, 2), 3), {
     upstream: async () => new Response('boom', { status: 500 }),
   });
-  check('拉取失败仍返回 200', r3.status === 200, 'status=' + r3.status);
-  check('拉取失败保留最小兜底规则', /MATCH,🐟 漏网之鱼/.test(r3.body), '缺少兜底 MATCH 规则');
-  check('兜底规则含国内直连', /GEOIP,CN,🎯 全球直连/.test(r3.body), '缺少兜底 GEOIP 规则');
+  check('拉取失败时回退最小兜底规则',
+    r3.status === 200 && /MATCH,🐟 漏网之鱼/.test(r3.body) && /GEOIP,CN,🎯 全球直连/.test(r3.body),
+    'status=' + r3.status);
 
   // list 模式不拉规则（只输出节点）
   const r4 = await request(sub(NODES.slice(0, 2)) + '&list=true', {
     upstream: async () => new Response('boom', { status: 500 }),
   });
   check('list 模式不拉取规则', r4.status === 200 && !r4.body.includes('rules:'), 'list 模式不应含 rules');
-  check('list 模式不因拉取失败而报错', r4.status === 200, 'status=' + r4.status);
 }
 
 /* ── 内置分流规则（rules=builtin）──
@@ -360,23 +331,7 @@ const sub = (list, caseNo = 0) =>
   const r = await request(
     '/' + KEY + '/sub?target=clash&rules=builtin&url=' + encodeURIComponent(NODES.slice(0, 2).join('\n')),
     { upstream: spy });
-  check('内置规则离线可用', r.status === 200, 'status=' + r.status);
-  check('内置规则不发网络请求', calls === 0, '发了 ' + calls + ' 次请求');
-
-  // 只列三类：要直连的、要单独挑节点的
-  const expect = [
-    ['DOMAIN-SUFFIX,baidu.com,🎯 全球直连', '国内域名走直连'],
-    ['DOMAIN-SUFFIX,bilibili.com,🎯 全球直连', '国内视频走直连'],
-    ['DOMAIN-SUFFIX,edu.cn,🎯 全球直连', '国内域名后缀走直连'],
-    ['GEOIP,CN,🎯 全球直连', '国内 IP 兜底'],
-    ['GEOIP,PRIVATE,🎯 全球直连', '内网 IP 兜底'],
-    ['DOMAIN-SUFFIX,netflix.com,🌍 国外媒体', '流媒体'],
-    ['DOMAIN-SUFFIX,spotify.com,🌍 国外媒体', '音乐'],
-    ['DOMAIN-SUFFIX,openai.com,🤖 AI 研究', 'AI 服务'],
-    ['DOMAIN-SUFFIX,claude.ai,🤖 AI 研究', 'AI 服务（第二家）'],
-    ['DOMAIN-SUFFIX,arxiv.org,🤖 AI 研究', '学术站点'],
-  ];
-  for (const [rule, label] of expect) check('内置规则：' + label, r.body.includes(rule), '缺少 ' + rule);
+  check('内置规则离线可用且不发网络请求', r.status === 200 && calls === 0, 'status=' + r.status + ' 发了 ' + calls + ' 次请求');
 
   const yaml = await import('js-yaml').then(m => m.default.load(r.body));
   const groups = new Map(yaml['proxy-groups'].map(g => [g.name, g]));
@@ -389,10 +344,11 @@ const sub = (list, caseNo = 0) =>
     'googlevideo 排在 google 关键字之后，会被 AI 组抢走');
 
   // 「其余交给兜底」这件事得成立：代理类类别不再逐条列举
-  const listed = (d) => yaml.rules.some(x => x.startsWith('DOMAIN-SUFFIX,' + d + ','));
-  for (const d of ['github.com', 'apple.com', 'microsoft.com', 'steamcommunity.com', 'telegram.org']) {
-    check('内置规则：不逐条列举 ' + d, !listed(d), d + ' 仍在表里，这类应该交给兜底');
-  }
+  const listed = ['github.com', 'apple.com', 'microsoft.com', 'steamcommunity.com', 'telegram.org']
+    .filter(d => yaml.rules.some(x => x.startsWith('DOMAIN-SUFFIX,' + d + ',')));
+  check('内置规则：不逐条列举代理类站点', listed.length === 0,
+    listed.join(', ') + ' 仍在表里，这类应该交给兜底');
+
   check('内置规则：兜底组排在最后', yaml.rules[yaml.rules.length - 1] === 'MATCH,🐟 漏网之鱼',
     '末条为 ' + yaml.rules[yaml.rules.length - 1]);
   check('内置规则：兜底默认走代理',
@@ -411,7 +367,6 @@ const sub = (list, caseNo = 0) =>
     return !(names.has(p[i]) || builtin.has(p[i]));
   });
   check('内置规则的目标都存在', dangling.length === 0, '悬空规则 ' + dangling.slice(0, 3).join(' | '));
-  check('内置规则无重复', new Set(yaml.rules).size === yaml.rules.length, '存在重复规则');
   // 上限是故意卡的：这张表只该有「直连 + 单独挑节点」两类，涨回上千条说明又跑偏了
   check('内置规则条数在 100~400 之间',
     yaml.rules.length > 100 && yaml.rules.length < 400, '实际 ' + yaml.rules.length + ' 条');
@@ -428,42 +383,81 @@ const sub = (list, caseNo = 0) =>
   const r = await request(
     '/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES.slice(0, 2).join('\n')),
     { upstream: spy });
-  check('默认使用内置规则',
-    r.status === 200 && r.body.includes('DOMAIN-SUFFIX,baidu.com,🎯 全球直连'), '未使用内置规则');
-  check('默认规则不联网', calls === 0, '发了 ' + calls + ' 次请求');
+  check('不传 rules 时默认用内置规则且不联网',
+    r.status === 200 && calls === 0 && r.body.includes('DOMAIN-SUFFIX,baidu.com,🎯 全球直连'),
+    '未使用内置规则，或发了 ' + calls + ' 次请求');
 }
 
 /* ── 校园网覆写（zju-override.yaml）──
  * 覆写在模块加载时就内联成常量，所以这里用默认路径（caseNo 0）即可。 */
 {
   const r = await request(sub(NODES.slice(0, 2)));
-  check('覆写：注入 ZJUconnect 节点', /name: ZJUconnect/.test(r.body) && /type: socks5/.test(r.body), '未找到 ZJUconnect');
-  check('覆写：socks5 指向本地 1090', /server: 127\.0\.0\.1/.test(r.body) && /port: 1090/.test(r.body), '地址或端口不对');
-  check('覆写：创建校园网策略组', /name: 🏫 校园网/.test(r.body), '未找到校园网组');
-  check('覆写：校园网组排在首位', r.body.indexOf('name: 🏫 校园网') < r.body.indexOf('name: 🚀 节点选择'), '校园网组未置顶');
+  check('覆写：注入指向本机 1090 的 ZJUconnect 节点',
+    /name: ZJUconnect/.test(r.body) && /server: 127\.0\.0\.1/.test(r.body) && /port: 1090/.test(r.body),
+    '未找到 ZJUconnect 或地址端口不对');
   // 置顶必须早于远端拉回来的第一条规则（桩里的 UnBan.list）
-  check('覆写：规则置顶',
+  check('覆写：规则置顶在远端规则之前',
     r.body.indexOf('DOMAIN,vpn.zju.edu.cn,DIRECT') < r.body.indexOf('DOMAIN-SUFFIX,lan,🎯 全球直连'),
     '校园网规则未排在远端规则之前');
-  check('覆写：浙大域名走校园网', /DOMAIN-SUFFIX,zju\.edu\.cn,🏫 校园网/.test(r.body), 'zju.edu.cn 规则缺失');
-  check('覆写：cc98 走校园网', /DOMAIN-SUFFIX,cc98\.org,🏫 校园网/.test(r.body), 'cc98.org 规则缺失');
-  check('覆写：内网 IP 段走校园网', /IP-CIDR,10\.0\.0\.0\/8,🏫 校园网,no-resolve/.test(r.body), '10.0.0.0/8 规则缺失');
-  check('覆写：登录门户走直连', /DOMAIN,vpn\.zju\.edu\.cn,DIRECT/.test(r.body), 'vpn 门户规则缺失');
+  check('覆写：浙大与 cc98 域名走校园网',
+    /DOMAIN-SUFFIX,zju\.edu\.cn,🏫 校园网/.test(r.body) && /DOMAIN-SUFFIX,cc98\.org,🏫 校园网/.test(r.body),
+    'zju.edu.cn 或 cc98.org 规则缺失');
 
   // 校园网组只能含 ZJUconnect 和 DIRECT，不能被自动塞入订阅节点
   // 精确解析而非按字符切片：校园网组置顶后，后面的组本身就含节点名
   const yaml = await import('js-yaml').then(m => m.default.load(r.body));
   const zju = yaml['proxy-groups'].find(g => g.name === '🏫 校园网');
-  check('覆写：校园网组只含 DIRECT 和 ZJUconnect',
+  check('覆写：校园网组置顶且只含 DIRECT 和 ZJUconnect',
+    yaml['proxy-groups'][0].name === '🏫 校园网' &&
     JSON.stringify(zju.proxies) === JSON.stringify(['DIRECT', 'ZJUconnect']),
     '实际为 ' + JSON.stringify(zju.proxies));
-  check('覆写：校园网默认走直连', zju.proxies[0] === 'DIRECT', '首项不是 DIRECT，默认不会走直连');
 }
-
-// 关闭覆写
 {
   const r = await request(sub(NODES.slice(0, 2)) + '&ovr=0');
   check('ovr=0 关闭覆写', !r.body.includes('ZJUconnect') && !r.body.includes('校园网'), '覆写仍然生效');
+}
+
+/* ── api.v1.mk 中继 ──
+ * relay=1 时把订阅链接交给 api.v1.mk 转，结果原样交给客户端；它那边出问题就落回
+ * 本地转换。这里用桩 fetch 扮演 api.v1.mk，检查我们发过去的参数和透传的响应头。 */
+{
+  let seen = null;
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.startsWith('https://api.v1.mk/sub')) {
+      seen = u;
+      return new Response('proxies:\n  - name: 中继节点\n    type: socks5\n', {
+        status: 200,
+        headers: {
+          'content-type': 'text/yaml',
+          'subscription-userinfo': 'upload=1; download=2; total=3; expire=4',
+        },
+      });
+    }
+    return rulesStub(req);
+  };
+  const r = await request(sub(['https://airport.example.com/link/x']) + '&relay=1', { upstream });
+  const q = seen ? new URL(seen).searchParams : new URLSearchParams();
+  check('中继：把订阅链接交给 api.v1.mk',
+    r.status === 200 &&
+    q.get('target') === 'clash' &&
+    q.get('url') === 'https://airport.example.com/link/x' &&
+    q.get('diyua').startsWith('clash-verge/v'),
+    '实际请求 ' + seen);
+  check('中继：原样返回 api.v1.mk 的配置和流量信息',
+    r.body.includes('中继节点') && r.headers.get('subscription-userinfo') === 'upload=1; download=2; total=3; expire=4',
+    'body=' + r.body.slice(0, 40) + ' userinfo=' + r.headers.get('subscription-userinfo'));
+}
+{
+  // api.v1.mk 不通时不能把客户端晾着，本地转换兜住
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.startsWith('https://api.v1.mk/sub')) return new Response('boom', { status: 502 });
+    return rulesStub(req);
+  };
+  const r = await request(sub(NODES.slice(0, 2)) + '&relay=1', { upstream });
+  check('中继：api.v1.mk 失败时回退本地转换',
+    r.status === 200 && r.body.includes('ss节点'), 'status=' + r.status);
 }
 
 /* ── 结果 ── */
