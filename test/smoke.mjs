@@ -352,8 +352,8 @@ const sub = (list, caseNo = 0) =>
 
 /* ── 内置分流规则（rules=builtin）──
  * 内置表在源码里（src/rules/builtin.js），不需要网络。这里用一个「调用就记一笔」
- * 的 fetch 证明它确实没发请求，并把分类映射锁住：改表、或者改 src/config.js 里的
- * 策略组名，都会让相关规则被过滤掉，这些断言必须能发现。 */
+ * 的 fetch 证明它确实没发请求，并锁住这张表的设计前提：只列「目标与兜底不同」的
+ * 规则，其余交给兜底；所以兜底组必须默认走代理，否则那些没列出来的站点会被漏成直连。 */
 {
   let calls = 0;
   const spy = async () => { calls++; return new Response('boom', { status: 500 }); };
@@ -363,40 +363,58 @@ const sub = (list, caseNo = 0) =>
   check('内置规则离线可用', r.status === 200, 'status=' + r.status);
   check('内置规则不发网络请求', calls === 0, '发了 ' + calls + ' 次请求');
 
-  // 每类挑一个代表，锁住「按用途分流」这件事
+  // 只列三类：要直连的、要单独挑节点的
   const expect = [
     ['DOMAIN-SUFFIX,baidu.com,🎯 全球直连', '国内域名走直连'],
-    ['DOMAIN-SUFFIX,github.com,💻 开发工具', '开发工具'],
-    ['DOMAIN-SUFFIX,openai.com,🤖 AI 研究', 'AI 服务'],
-    ['DOMAIN-SUFFIX,arxiv.org,🤖 AI 研究', '学术站点'],
+    ['DOMAIN-SUFFIX,bilibili.com,🎯 全球直连', '国内视频走直连'],
+    ['DOMAIN-SUFFIX,edu.cn,🎯 全球直连', '国内域名后缀走直连'],
+    ['GEOIP,CN,🎯 全球直连', '国内 IP 兜底'],
+    ['GEOIP,PRIVATE,🎯 全球直连', '内网 IP 兜底'],
     ['DOMAIN-SUFFIX,netflix.com,🌍 国外媒体', '流媒体'],
-    ['DOMAIN-SUFFIX,store.steampowered.com,🎮 游戏平台', '游戏'],
-    ['DOMAIN-SUFFIX,huggingface.co,⬇️ 下载更新', '大文件下载'],
-    ['DOMAIN-SUFFIX,download.jetbrains.com,⬇️ 下载更新', '软件更新'],
-    ['DOMAIN-SUFFIX,apple.com,🍎 苹果服务', '苹果'],
-    ['DOMAIN-SUFFIX,microsoft.com,Ⓜ️ 微软服务', '微软'],
-    ['DOMAIN-SUFFIX,telegram.org,🚀 节点选择', '电报'],
-    ['GEOIP,CN,🎯 全球直连', '国内兜底'],
+    ['DOMAIN-SUFFIX,spotify.com,🌍 国外媒体', '音乐'],
+    ['DOMAIN-SUFFIX,openai.com,🤖 AI 研究', 'AI 服务'],
+    ['DOMAIN-SUFFIX,claude.ai,🤖 AI 研究', 'AI 服务（第二家）'],
+    ['DOMAIN-SUFFIX,arxiv.org,🤖 AI 研究', '学术站点'],
   ];
   for (const [rule, label] of expect) check('内置规则：' + label, r.body.includes(rule), '缺少 ' + rule);
 
+  const yaml = await import('js-yaml').then(m => m.default.load(r.body));
+  const groups = new Map(yaml['proxy-groups'].map(g => [g.name, g]));
+
+  // googlevideo.com 串里也含 "google"，而 AI 段末尾正是 DOMAIN-KEYWORD,google。
+  // 两段顺序颠倒的话 YouTube 会被 AI 组抢走，所以这条要盯住。
+  check('内置规则：google 关键字不抢流媒体',
+    yaml.rules.indexOf('DOMAIN-SUFFIX,googlevideo.com,🌍 国外媒体') <
+    yaml.rules.indexOf('DOMAIN-KEYWORD,google,🤖 AI 研究'),
+    'googlevideo 排在 google 关键字之后，会被 AI 组抢走');
+
+  // 「其余交给兜底」这件事得成立：代理类类别不再逐条列举
+  const listed = (d) => yaml.rules.some(x => x.startsWith('DOMAIN-SUFFIX,' + d + ','));
+  for (const d of ['github.com', 'apple.com', 'microsoft.com', 'steamcommunity.com', 'telegram.org']) {
+    check('内置规则：不逐条列举 ' + d, !listed(d), d + ' 仍在表里，这类应该交给兜底');
+  }
+  check('内置规则：兜底组排在最后', yaml.rules[yaml.rules.length - 1] === 'MATCH,🐟 漏网之鱼',
+    '末条为 ' + yaml.rules[yaml.rules.length - 1]);
+  check('内置规则：兜底默认走代理',
+    groups.get('🐟 漏网之鱼').proxies[0] === '🚀 节点选择',
+    '兜底组默认是 ' + groups.get('🐟 漏网之鱼').proxies[0] + '，未匹配的流量会被漏成直连');
+
   // 规则的目标必须存在，否则 mihomo 拒绝加载整份配置。逐条解析后判断，
   // 而不是按文本匹配——文本匹配会把策略组名那一段漏掉。
-  const yaml = await import('js-yaml').then(m => m.default.load(r.body));
-  const groups = new Set(yaml['proxy-groups'].map(g => g.name));
+  const names = new Set(groups.keys());
   const builtin = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'GLOBAL']);
   const OPTIONS = ['no-resolve', 'src', 'dns-failed', 'extended'];
   const dangling = yaml.rules.filter(x => {
     const p = x.split(',').map(s => s.trim());
     let i = p.length - 1;
     while (i >= 0 && OPTIONS.includes(p[i].toLowerCase())) i--;
-    return !(groups.has(p[i]) || builtin.has(p[i]));
+    return !(names.has(p[i]) || builtin.has(p[i]));
   });
   check('内置规则的目标都存在', dangling.length === 0, '悬空规则 ' + dangling.slice(0, 3).join(' | '));
   check('内置规则无重复', new Set(yaml.rules).size === yaml.rules.length, '存在重复规则');
-  check('内置规则以 MATCH 结尾',
-    yaml.rules[yaml.rules.length - 1].startsWith('MATCH,'), '末条为 ' + yaml.rules[yaml.rules.length - 1]);
-  check('内置规则条数合理', yaml.rules.length > 500, '只有 ' + yaml.rules.length + ' 条');
+  // 上限是故意卡的：这张表只该有「直连 + 单独挑节点」两类，涨回上千条说明又跑偏了
+  check('内置规则条数在 100~400 之间',
+    yaml.rules.length > 100 && yaml.rules.length < 400, '实际 ' + yaml.rules.length + ' 条');
   // 覆写规则置顶后，校内域名必须比内置表里的 edu.cn 更早命中
   check('内置规则下校园网规则仍置顶',
     yaml.rules[0] === 'DOMAIN,vpn.zju.edu.cn,DIRECT' &&
@@ -411,7 +429,7 @@ const sub = (list, caseNo = 0) =>
     '/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES.slice(0, 2).join('\n')),
     { upstream: spy });
   check('默认使用内置规则',
-    r.status === 200 && r.body.includes('DOMAIN-SUFFIX,github.com,💻 开发工具'), '未使用内置规则');
+    r.status === 200 && r.body.includes('DOMAIN-SUFFIX,baidu.com,🎯 全球直连'), '未使用内置规则');
   check('默认规则不联网', calls === 0, '发了 ' + calls + ' 次请求');
 }
 

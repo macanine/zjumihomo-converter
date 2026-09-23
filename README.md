@@ -4,7 +4,7 @@ Clash 订阅转换器，为**浙江大学校园网**环境定制。
 
 - 把订阅链接、base64 订阅内容或单条节点链接，转换成 mihomo（Clash.Meta）可用的 YAML
 - 支持 ss / ssr / vmess / trojan / vless / hysteria / hysteria2
-- 内置一套分流规则（离线可用，按 AI/学术、流媒体、开发、下载、游戏等用途分流），
+- 内置一套分流规则（离线可用，国内直连、流媒体和 AI 单独成组，其余走代理），
   也可以换成运行时从 [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) 拉取、跟随上游更新
 - 自动加入指向本机 zju-connect 的 SOCKS5 节点和「🏫 校园网」策略组
 
@@ -57,21 +57,23 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 ## 分流规则
 
-默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，约 1200 条），
-转换时直接展开，**不联网**，所以转换端出不了网也能正确分流。它按用途把流量分给不同的
-策略组，来源是 GLaDOS 客户端的 mihomo 配置里的规则段：
+默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，274 条），转换时直接
+展开，**不联网**——转换端出不了网也能分流，校园网里这点比覆盖面更要紧。
+
+它只写两类规则：**要走直连的**、**要单独挑节点的**，其余全部交给兜底。兜底是
+`MATCH,🐟 漏网之鱼`，而该组默认选中 🚀 节点选择，所以没被任何规则命中的流量一律走代理——
+开发、下载、游戏、社交、CDN 这些类别因此不必逐条列举，列了也只是换个组名走同一条代理。
 
 | 策略组 | 管什么 | 例子 |
 |---|---|---|
-| 🎯 全球直连 | 本机/局域网、路由器管理页、国内域名 | `localhost`、`baidu.com`、`.cn`、`GEOIP,CN` |
-| 🚀 节点选择 | 电报/Discord、社交、券商、IP 查询、CDN、TikTok | `telegram.org`、`x.com`、`akamaized.net` |
-| 🤖 AI 研究 | AI 服务与学术站点 | `openai.com`、`claude.ai`、`arxiv.org`、`ieee.org` |
-| 🌍 国外媒体 | 视频/音乐/直播 | `youtube.com`、`netflix.com`、`spotify.com` |
-| 💻 开发工具 | 代码托管、包管理、Docker、协作工具 | `github.com`、`pypi.org`、`docker.io` |
-| ⬇️ 下载更新 | 大文件下载与软件更新 | `huggingface.co`、`download.jetbrains.com` |
-| 🎮 游戏平台 | Steam、Epic 等 | `steampowered.com`、`epicgames.com` |
-| Ⓜ️ 微软服务 / 🍎 苹果服务 | 微软、苹果全家桶 | `office.com`、`icloud.com` |
-| 🐟 漏网之鱼 | 以上都没命中的（默认直连，可在客户端切换） | —— |
+| 🎯 全球直连 | 本机、局域网、路由器管理页、国内域名 | `localhost`、`baidu.com`、`edu.cn`、`GEOIP,CN` |
+| 🌍 国外媒体 | 流媒体：单独成组方便挑一个解锁流媒体的节点 | `youtube.com`、`netflix.com`、`spotify.com` |
+| 🤖 AI 研究 | AI 与学术：不少 AI 服务挑 IP 地区 | `openai.com`、`claude.ai`、`arxiv.org` |
+| 🐟 漏网之鱼 | 其余全部，默认走代理 | `github.com`、`steamcommunity.com` |
+
+要把某个类别单独拆出来（微软、苹果、下载、成人站点……），在内置表里加一段、组名用
+[src/config.js](src/config.js) 里已有的组就行；想让未匹配的流量走直连，改 🐟 漏网之鱼 的
+候选顺序即可。
 
 要更全的覆盖面可以把 `rules` 换成 ACL4SSR 预设（`mini` 约 3400 条、`full` 约 9500 条），
 此时规则在转换时从云端拉取，**需要转换端能访问 GitHub**（内置 raw / ghfast.top / jsdelivr
