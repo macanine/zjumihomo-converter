@@ -1,5 +1,5 @@
 /**
- * 运行时从 ACL4SSR 拉取分流规则。
+ * 分流规则：默认用内置表，需要更全的覆盖面时从 ACL4SSR 拉取。
  *
  * ACL4SSR 的分发结构和本项目原本的假设不同，这里的关键点：
  *   - Clash/config/*.ini 是 subconverter 配方格式，不是 Clash YAML。
@@ -13,6 +13,8 @@
  *
  * 过滤是必须的：规则引用了配置里不存在的策略组时，mihomo 会拒绝加载整份配置。
  */
+
+import { gen_builtin_rules } from '../rules/builtin.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
@@ -167,6 +169,34 @@ function rule_group(rule) {
   return null;
 }
 
+/** 内置规则表的选择器名 */
+const BUILTIN_SELECTOR = 'builtin';
+
+/**
+ * 取分流规则。内置表直接展开（不联网），其余选择器交给 ACL4SSR 拉取。
+ *
+ * 两条路径都要过 filter_rules：引用不存在策略组的规则必须丢，
+ * 否则 mihomo 会拒绝加载整份配置。
+ *
+ * @param {string} selector  内置名 builtin / 预设名（mini/full/...）/ .ini 的完整地址
+ * @param {Set<string>} available_groups  配置里实际存在的策略组名
+ * @returns {Promise<{rules:string[], source:string, dropped:number}>}
+ */
+async function resolve_rules(selector, available_groups) {
+  if (String(selector).toLowerCase() !== BUILTIN_SELECTOR) {
+    return fetch_acl4ssr_rules(selector, available_groups);
+  }
+
+  const { rules, dropped } = filter_rules(gen_builtin_rules(), available_groups, BUILTIN_SELECTOR);
+  // 终结规则可能被过滤掉（组名不在模板里时），那就没有规则接住未匹配的流量了。
+  // 补回模板自带的兜底组；连它都没有就退回 DIRECT——内置策略，一定存在。
+  if (!rules.some(r => /^MATCH,/i.test(r))) {
+    rules.push(available_groups && available_groups.has('🐟 漏网之鱼')
+      ? 'MATCH,🐟 漏网之鱼' : 'MATCH,DIRECT');
+  }
+  return { rules, source: BUILTIN_SELECTOR, dropped };
+}
+
 /** 把一份 .list 的文本展开成规则数组 */
 function parse_list(text, group) {
   const out = [];
@@ -278,4 +308,4 @@ function filter_rules(rules, available_groups, source) {
   return { rules: kept, source, dropped };
 }
 
-export { fetch_acl4ssr_rules };
+export { fetch_acl4ssr_rules, resolve_rules };

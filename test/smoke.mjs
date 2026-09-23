@@ -350,6 +350,71 @@ const sub = (list, caseNo = 0) =>
   check('list 模式不因拉取失败而报错', r4.status === 200, 'status=' + r4.status);
 }
 
+/* ── 内置分流规则（rules=builtin）──
+ * 内置表在源码里（src/rules/builtin.js），不需要网络。这里用一个「调用就记一笔」
+ * 的 fetch 证明它确实没发请求，并把分类映射锁住：改表、或者改 src/config.js 里的
+ * 策略组名，都会让相关规则被过滤掉，这些断言必须能发现。 */
+{
+  let calls = 0;
+  const spy = async () => { calls++; return new Response('boom', { status: 500 }); };
+  const r = await request(
+    '/' + KEY + '/sub?target=clash&rules=builtin&url=' + encodeURIComponent(NODES.slice(0, 2).join('\n')),
+    { upstream: spy });
+  check('内置规则离线可用', r.status === 200, 'status=' + r.status);
+  check('内置规则不发网络请求', calls === 0, '发了 ' + calls + ' 次请求');
+
+  // 每类挑一个代表，锁住「按用途分流」这件事
+  const expect = [
+    ['DOMAIN-SUFFIX,baidu.com,🎯 全球直连', '国内域名走直连'],
+    ['DOMAIN-SUFFIX,github.com,💻 开发工具', '开发工具'],
+    ['DOMAIN-SUFFIX,openai.com,🤖 AI 研究', 'AI 服务'],
+    ['DOMAIN-SUFFIX,arxiv.org,🤖 AI 研究', '学术站点'],
+    ['DOMAIN-SUFFIX,netflix.com,🌍 国外媒体', '流媒体'],
+    ['DOMAIN-SUFFIX,store.steampowered.com,🎮 游戏平台', '游戏'],
+    ['DOMAIN-SUFFIX,huggingface.co,⬇️ 下载更新', '大文件下载'],
+    ['DOMAIN-SUFFIX,download.jetbrains.com,⬇️ 下载更新', '软件更新'],
+    ['DOMAIN-SUFFIX,apple.com,🍎 苹果服务', '苹果'],
+    ['DOMAIN-SUFFIX,microsoft.com,Ⓜ️ 微软服务', '微软'],
+    ['DOMAIN-SUFFIX,telegram.org,🚀 节点选择', '电报'],
+    ['GEOIP,CN,🎯 全球直连', '国内兜底'],
+  ];
+  for (const [rule, label] of expect) check('内置规则：' + label, r.body.includes(rule), '缺少 ' + rule);
+
+  // 规则的目标必须存在，否则 mihomo 拒绝加载整份配置。逐条解析后判断，
+  // 而不是按文本匹配——文本匹配会把策略组名那一段漏掉。
+  const yaml = await import('js-yaml').then(m => m.default.load(r.body));
+  const groups = new Set(yaml['proxy-groups'].map(g => g.name));
+  const builtin = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'GLOBAL']);
+  const OPTIONS = ['no-resolve', 'src', 'dns-failed', 'extended'];
+  const dangling = yaml.rules.filter(x => {
+    const p = x.split(',').map(s => s.trim());
+    let i = p.length - 1;
+    while (i >= 0 && OPTIONS.includes(p[i].toLowerCase())) i--;
+    return !(groups.has(p[i]) || builtin.has(p[i]));
+  });
+  check('内置规则的目标都存在', dangling.length === 0, '悬空规则 ' + dangling.slice(0, 3).join(' | '));
+  check('内置规则无重复', new Set(yaml.rules).size === yaml.rules.length, '存在重复规则');
+  check('内置规则以 MATCH 结尾',
+    yaml.rules[yaml.rules.length - 1].startsWith('MATCH,'), '末条为 ' + yaml.rules[yaml.rules.length - 1]);
+  check('内置规则条数合理', yaml.rules.length > 500, '只有 ' + yaml.rules.length + ' 条');
+  // 覆写规则置顶后，校内域名必须比内置表里的 edu.cn 更早命中
+  check('内置规则下校园网规则仍置顶',
+    yaml.rules[0] === 'DOMAIN,vpn.zju.edu.cn,DIRECT' &&
+    yaml.rules.indexOf('DOMAIN-SUFFIX,zju.edu.cn,🏫 校园网') < yaml.rules.indexOf('DOMAIN-SUFFIX,edu.cn,🎯 全球直连'),
+    '校园网规则未排在 edu.cn 之前');
+}
+{
+  // 不传 rules 时默认走内置表：同样不该有任何网络请求
+  let calls = 0;
+  const spy = async () => { calls++; return new Response('boom', { status: 500 }); };
+  const r = await request(
+    '/' + KEY + '/sub?target=clash&url=' + encodeURIComponent(NODES.slice(0, 2).join('\n')),
+    { upstream: spy });
+  check('默认使用内置规则',
+    r.status === 200 && r.body.includes('DOMAIN-SUFFIX,github.com,💻 开发工具'), '未使用内置规则');
+  check('默认规则不联网', calls === 0, '发了 ' + calls + ' 次请求');
+}
+
 /* ── 校园网覆写（zju-override.yaml）──
  * 覆写在模块加载时就内联成常量，所以这里用默认路径（caseNo 0）即可。 */
 {

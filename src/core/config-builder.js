@@ -1,13 +1,13 @@
 import { gen_nodes } from './nodes.js';
 import { clash_config } from '../config.js';
-import { fetch_acl4ssr_rules } from './rules-fetcher.js';
+import { resolve_rules } from './rules-fetcher.js';
 import { apply_override, check_override } from './override.js';
 // 打包器会把这份 YAML 转成 JS 字面量内联进来，运行时不需要读文件
 import zju_override from '../../zju-override.yaml';
 
-// 规则来源。本地已不再内置规则，一律从 ACL4SSR 拉取，
-// 这个值只是默认的预设名，可被 URL 上的 rules 参数覆盖（预设名或 .ini 地址）。
-const DEFAULT_RULES = 'mini';
+// 规则来源。默认用内置规则表（src/rules/builtin.js，离线可用、按用途分流），
+// 换成 ACL4SSR 预设名或 .ini 地址就走远端拉取（覆盖面更大但依赖转换端能出网）。
+const DEFAULT_RULES = 'builtin';
 
 // 拉取彻底失败时的最小兜底规则。
 // 没有它就只能返回错误，而 mihomo 不接受缺少 rules 的配置。
@@ -34,15 +34,15 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
   const is_list = !!(listmode && /true/i.test(listmode));
   const want_rules = (rules_sel === undefined || rules_sel === '') ? DEFAULT_RULES : rules_sel;
 
-  // 规则拉取和节点解析互不依赖，并发跑以省掉一个网络往返。
+  // 规则获取和节点解析互不依赖，并发跑以省掉一个网络往返。
   // 立刻挂上 catch，避免提前 return 时留下未处理的 rejection。
   let rules_result = null;
   let rules_promise = null;
   if (!is_list) {
     const groups = new Set((clash_config['proxy-groups'] || []).map(g => g.name));
-    rules_promise = fetch_acl4ssr_rules(want_rules, groups)
+    rules_promise = resolve_rules(want_rules, groups)
       .then(r => { rules_result = r; })
-      .catch(e => { console.error('规则拉取失败，使用最小兜底规则: %o', e); });
+      .catch(e => { console.error('规则获取失败，使用最小兜底规则: %o', e); });
   }
 
   await gen_nodes(data, proxy);

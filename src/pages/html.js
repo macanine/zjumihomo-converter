@@ -47,7 +47,8 @@ function gen_html(pre) {
           <div class="col-md-5">
             <label for="rules" class="form-label">分流规则</label>
             <select id="rules" class="form-select">
-              <option value="mini" selected>ACL4SSR Mini（约 3400 条）</option>
+              <option value="builtin" selected>内置规则（无需联网，按用途分流）</option>
+              <option value="mini">ACL4SSR Mini（约 3400 条）</option>
               <option value="mini_adblock">ACL4SSR Mini + 去广告</option>
               <option value="mini_multi">ACL4SSR Mini 多模式</option>
               <option value="mini_multicountry">ACL4SSR Mini 多国家</option>
@@ -55,7 +56,7 @@ function gen_html(pre) {
               <option value="full_adblock">ACL4SSR Full + 去广告</option>
               <option value="full_netflix">ACL4SSR Full + 奈飞</option>
             </select>
-            <div class="hint mt-1">转换时从 ACL4SSR 云端拉取，需要能访问 GitHub</div>
+            <div class="hint mt-1">内置规则离线可用；选 ACL4SSR 时转换端要能访问 GitHub</div>
           </div>
           <div class="col-md-3">
             <label for="client" class="form-label">客户端</label>
@@ -142,7 +143,8 @@ function gen_html(pre) {
   </div>
 
   <footer class="text-center mt-3">
-    规则来自 <a href="https://github.com/ACL4SSR/ACL4SSR" class="text-decoration-none">ACL4SSR</a>
+    默认分流规则内置在转换器里
+    · ACL4SSR 规则来自 <a href="https://github.com/ACL4SSR/ACL4SSR" class="text-decoration-none">ACL4SSR</a>
     · 源码在 <a href="https://github.com/macanine/zjumihomo-converter" class="text-decoration-none">GitHub</a>
   </footer>
 </div>

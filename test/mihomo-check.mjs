@@ -93,7 +93,7 @@ function validate(yamlText) {
   }
 }
 
-const PRESETS = ['mini', 'mini_adblock', 'mini_multi', 'mini_multicountry',
+const PRESETS = ['builtin', 'mini', 'mini_adblock', 'mini_multi', 'mini_multicountry',
   'full', 'full_adblock', 'full_netflix'];
 
 console.log(`使用内核: ${MIHOMO}`);
