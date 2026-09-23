@@ -55,6 +55,9 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 流量信息（`Subscription-Userinfo`）会透传，多个订阅合并流量、取最晚过期时间。
 
+拉取订阅链接时固定用 Clash Verge 的 UA（`clash-verge/v<版本>`），不转发你客户端的 UA；
+机场按 UA 区分返回内容时，这样拿到的是 Clash 那份。
+
 ## 分流规则
 
 默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，274 条），转换时直接

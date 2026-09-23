@@ -17,7 +17,7 @@ src/
 ├── index.js              入口：路由与请求处理（Cloudflare Pages Function）
 ├── config.js             YAML 模板：策略组、DNS、TUN、sniffer（不含规则）
 ├── core/
-│   ├── globals.js        默认密钥、udp/tfo 默认值、UA（模块级可变状态）
+│   ├── globals.js        默认密钥、udp/tfo 默认值、拉订阅用的 UA 常量
 │   ├── utils.js          base64 / URL / content-type 工具
 │   ├── nodes.js          订阅解析：递归展开 base64、按行识别节点链接
 │   ├── config-builder.js 组装最终配置：去重、重命名、注入策略组、应用覆写
@@ -141,6 +141,14 @@ www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校
 
 ACL4SSR 的 `ProxyMedia.list` 里有 `URL-REGEX`，mihomo v1.19 已移除该类型支持，
 留着会让整份配置加载失败。`rules-fetcher.js` 的 `KNOWN_TYPES` 维护白名单。
+
+### 拉订阅时用 Clash Verge 的 UA
+
+`nodes.js` 发上游请求时固定带 `User-Agent: clash-verge/v<版本>`（`src/core/globals.js` 里的
+`sub_ua` 常量），**不再转发来访客户端的 UA**。两个原因：机场普遍按 UA 区分返回内容，
+浏览器 UA 可能换来一份 HTML 首页而不是订阅；而且原来的 UA 是模块级可变状态，同一个
+isolate 内会被后续请求读到。写法对齐 clash-verge-rev 的 `utils/network.rs`（它只设 UA，
+Accept 交给 reqwest 默认的 `*/*`），所以请求里也不再自己塞浏览器风格的 Accept。
 
 ### 订阅名走 Content-Disposition，不是 URL 末段
 

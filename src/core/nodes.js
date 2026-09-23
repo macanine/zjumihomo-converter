@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { get_ua_default } from './globals.js';
+import { sub_ua } from './globals.js';
 import { isValidUrl, contentTypeIsText, decodeBase64 } from './utils.js';
 import { name_from_headers } from './sub-name.js';
 import { decode_ss } from '../protocols/ss.js';
@@ -118,7 +118,10 @@ async function decode_link(url) {
   var t, r, req, z, up, dn, to, ex;
   if (!isValidUrl(url)) return null;
   try {
-    req = new Request(url, { 'method': 'GET', 'headers': { 'User-Agent': get_ua_default(), 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' } });
+    // 只发 UA（Clash Verge 自己也不设 Accept，reqwest 默认就是 */*）。
+    // 之前那个浏览器风格的 Accept 跟 clash-verge 的 UA 是矛盾的组合，
+    // 按 Accept 判断「浏览器访问」的面板会回一份 HTML 首页。
+    req = new Request(url, { 'method': 'GET', 'headers': { 'User-Agent': sub_ua } });
     r = await fetch(req);
     if (!contentTypeIsText(r.headers) || r.status != 200) {
       return null;

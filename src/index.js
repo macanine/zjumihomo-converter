@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 
-import { key_default, set_ua_default } from './core/globals.js';
+import { key_default } from './core/globals.js';
 import { gen_cfg } from './core/config-builder.js';
 import { content_disposition } from './core/sub-name.js';
 import { nginx } from './pages/nginx.js';
@@ -22,10 +22,6 @@ export default {
         return gen_html(url.origin + '/' + key + SUBINF + '?');
       }
       else if (path == SUBINF) {
-        let ua = request.headers.get('User-Agent');
-        if (ua && typeof (ua) == 'string' && ua.length > 0) {
-          set_ua_default(ua);
-        }
         let headers = { 'Content-Type': 'text/plain; charset=utf-8' };
         let par = url.searchParams;
         let t = par.get('target');
