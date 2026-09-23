@@ -21,9 +21,10 @@ src/
 │   ├── utils.js          base64 / URL / content-type 工具
 │   ├── nodes.js          订阅解析：递归展开 base64、按行识别节点链接
 │   ├── config-builder.js 组装最终配置：去重、重命名、注入策略组、应用覆写
-│   ├── rules-fetcher.js  运行时从 ACL4SSR 拉取分流规则
+│   ├── rules-fetcher.js  规则入口：内置表展开 / 运行时从 ACL4SSR 拉取
 │   ├── sub-name.js       推导订阅名 → Content-Disposition（客户端拿它命名配置）
 │   └── override.js       应用 zju-override.yaml（节点/策略组/置顶规则）
+├── rules/builtin.js      内置分流规则表（默认规则来源，离线可用）
 ├── protocols/            每个协议一个文件，各自导出 decode_xxx()
 └── pages/                静态页面：nginx.js（伪装首页）html.js（表单）favicon.js
 build/build.mjs           打包器（手写，零依赖）
@@ -32,8 +33,8 @@ test/mihomo-check.mjs     用真实 mihomo 内核校验产出配置
 zju-override.yaml         校园网覆写片段（构建时内联）
 ```
 
-请求流程：`/<key>/sub?target=clash&url=...` → `gen_cfg()` → 拉规则（并发）→ 解析节点
-→ 去重重命名 → 注入策略组 → 应用覆写 → `yaml.dump`。
+请求流程：`/<key>/sub?target=clash&url=...` → `gen_cfg()` → 取规则（内置表展开，或并发拉
+ACL4SSR）→ 解析节点 → 去重重命名 → 注入策略组 → 应用覆写 → `yaml.dump`。
 
 ## 必须知道的几件事
 
@@ -74,9 +75,9 @@ FINAL                         → MATCH,🐟 漏网之鱼
 「🏫 校园网」组不能被塞进订阅节点，所以覆写必须在那个循环**之后**应用。
 
 覆写各段语义不同：proxies 追加、proxy-groups **置顶**（校园网要排最前）、rules **置顶**
-（否则被 ACL4SSR 的 `GEOIP,CN` 和末尾 `MATCH` 抢走，永远匹配不到）；dns 段按值的类型
-合并——列表追加（`fake-ip-filter` 不能丢掉模板里那一长串）、映射表逐键合并
-（`nameserver-policy`）、标量覆盖。
+（内置表和 ACL4SSR 都带 `GEOIP,CN` 这类兜底和末尾的 `MATCH`，校园网规则排在后面就
+永远匹配不到）；dns 段按值的类型合并——列表追加（`fake-ip-filter` 不能丢掉模板里那一长串）、
+映射表逐键合并（`nameserver-policy`）、标量覆盖。
 
 ### DNS 上游：校内域名走校内，其余走 114
 
@@ -108,13 +109,28 @@ www.baidu.com  --> [153.3.238.127 ...] A from udp://114.114.114.114:53
 www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校正
 ```
 
-### 没有本地兜底规则
+### 分流规则：默认内置，ACL4SSR 是可选项
 
-本地规则已全部移除，一律运行时从 ACL4SSR 拉取。拉取失败时用 `FALLBACK_RULES`
-（`GEOIP,CN,🎯 全球直连` + `MATCH,🐟 漏网之鱼`），保证配置合法且流量能走通。
+默认 `rules=builtin`，用 `src/rules/builtin.js` 里那张表，**不联网**——转换端出不了网也能
+按用途分流（校园网里访问 GitHub 本来就不稳，纯靠远端拉取等于没有分流）。
 
-拉取有三级超时：单请求 5s、整批 8s 预算、镜像重试也受预算约束。未知的 `rules` 取值
-立即失败（不会白等三个镜像）。
+表的结构是 `[策略组, 条目…]`，条目不含逗号按域后缀展开成 `DOMAIN-SUFFIX`，含逗号则是完整
+规则（`DOMAIN-KEYWORD,porn` / `GEOIP,CN` / `DST-PORT,8080`）。三个必须知道的点：
+
+- **顺序就是优先级**（Clash 先匹配先命中），所以表里同一个策略组会出现多次——那是来源
+  配置自己的分段，合并会改变匹配结果。段内的条目也按来源原样保留，包括被前面更宽的
+  规则遮住的那些。
+- **组名必须和 `src/config.js` 里的策略组对得上**。指向不存在的组时规则会被
+  `filter_rules` 丢掉，表现为「那类流量静默退回兜底」，不报错。加组和加规则要一起改，
+  冒烟测试里有逐条核对目标是否存在的用例。
+- 展开时按整条规则去重（来源里有整整两段重复的 AI/学术规则），最后补一条
+  `MATCH,🐟 漏网之鱼`。终结规则若因组名缺失被过滤掉，`resolve_rules` 会补回来——
+  没有它就是「未匹配流量无处可去」。
+
+`rules=mini|full|...` 或 `.ini` 地址仍然是从 ACL4SSR 拉取，那条路径的大坑见下面几节。
+拉取失败时用 `FALLBACK_RULES`（`GEOIP,CN,🎯 全球直连` + `MATCH,🐟 漏网之鱼`），
+保证配置合法且流量能走通。拉取有三级超时：单请求 5s、整批 8s 预算、镜像重试也受预算
+约束；未知的 `rules` 取值立即失败（不会白等三个镜像）。
 
 ### 内核不支持的规则类型会被丢弃
 
@@ -153,9 +169,12 @@ Mihomo Party 都认这个协议。**`url=` 必须放在最后**：Clash Verge �
 ## 测试
 
 ```bash
-npm test            # 72 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
+npm test            # 94 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
 npm run test:mihomo # 用本机 mihomo 内核校验产出配置，需要网络
 ```
+
+`npm test` **不会自动构建**（`dist/_worker.js` 是它测的对象），改完代码先 `npm run build`，
+否则跑的是上一版产物——表现为测试结果和你刚改的东西无关。
 
 **改动规则、策略组、覆写相关代码后必须跑 `npm run test:mihomo`。** 自写的检查器只能验证
 「你以为的」格式——之前规则组名位置写反、`URL-REGEX` 不受支持这两个 bug，冒烟测试全绿

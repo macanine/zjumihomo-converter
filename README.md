@@ -4,7 +4,8 @@ Clash 订阅转换器，为**浙江大学校园网**环境定制。
 
 - 把订阅链接、base64 订阅内容或单条节点链接，转换成 mihomo（Clash.Meta）可用的 YAML
 - 支持 ss / ssr / vmess / trojan / vless / hysteria / hysteria2
-- 分流规则运行时从 [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) 拉取，跟随上游更新无需重新部署
+- 内置一套分流规则（离线可用，按 AI/学术、流媒体、开发、下载、游戏等用途分流），
+  也可以换成运行时从 [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) 拉取、跟随上游更新
 - 自动加入指向本机 zju-connect 的 SOCKS5 节点和「🏫 校园网」策略组
 
 纯 JavaScript，零依赖，部署在 **Cloudflare Pages** 上，产物是单个自包含的 worker 文件。
@@ -42,7 +43,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 |---|---|
 | `url` | 订阅链接 / base64 内容 / 节点链接，多个用 `\|` 或换行分隔（必填） |
 | `target` | 仅 `clash` |
-| `rules` | 规则预设，默认 `mini`；还有 `mini_adblock` `mini_multi` `full` `full_adblock` 等，或直接给 .ini 的 URL |
+| `rules` | 规则来源，默认 `builtin`（内置）；也可用 `mini` `mini_adblock` `mini_multi` `full` `full_adblock` `full_netflix` 从 ACL4SSR 拉取，或直接给 .ini 的 URL |
 | `ovr` | 校园网覆写，`0` 关闭（默认开启） |
 | `udp` `tfo` | `1` 启用、`0` 禁用、`2` 默认 |
 | `dns` | `1` 启用、`2` 仅监听、`0` 禁用 |
@@ -56,11 +57,29 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 ## 分流规则
 
-默认 `mini`（ACL4SSR Mini，约 3400 条）。规则在转换时从云端拉取，**需要能访问
-GitHub**（内置 raw / ghfast.top / jsdelivr 镜像回退）。首次 1-2 秒，之后缓存 1 小时；
-拉取失败只保留最小分流（国内直连、其余走代理），配置始终可用。
+默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，约 1200 条），
+转换时直接展开，**不联网**，所以转换端出不了网也能正确分流。它按用途把流量分给不同的
+策略组，来源是 GLaDOS 客户端的 mihomo 配置里的规则段：
 
-引用了不存在策略组、或内核不支持的规则类型会被自动丢弃——留着会让 mihomo 拒绝加载。
+| 策略组 | 管什么 | 例子 |
+|---|---|---|
+| 🎯 全球直连 | 本机/局域网、路由器管理页、国内域名 | `localhost`、`baidu.com`、`.cn`、`GEOIP,CN` |
+| 🚀 节点选择 | 电报/Discord、社交、券商、IP 查询、CDN、TikTok | `telegram.org`、`x.com`、`akamaized.net` |
+| 🤖 AI 研究 | AI 服务与学术站点 | `openai.com`、`claude.ai`、`arxiv.org`、`ieee.org` |
+| 🌍 国外媒体 | 视频/音乐/直播 | `youtube.com`、`netflix.com`、`spotify.com` |
+| 💻 开发工具 | 代码托管、包管理、Docker、协作工具 | `github.com`、`pypi.org`、`docker.io` |
+| ⬇️ 下载更新 | 大文件下载与软件更新 | `huggingface.co`、`download.jetbrains.com` |
+| 🎮 游戏平台 | Steam、Epic 等 | `steampowered.com`、`epicgames.com` |
+| Ⓜ️ 微软服务 / 🍎 苹果服务 | 微软、苹果全家桶 | `office.com`、`icloud.com` |
+| 🐟 漏网之鱼 | 以上都没命中的（默认直连，可在客户端切换） | —— |
+
+要更全的覆盖面可以把 `rules` 换成 ACL4SSR 预设（`mini` 约 3400 条、`full` 约 9500 条），
+此时规则在转换时从云端拉取，**需要转换端能访问 GitHub**（内置 raw / ghfast.top / jsdelivr
+镜像回退）。首次 1-2 秒，之后缓存 1 小时；拉取失败只保留最小分流（国内直连、其余走代理），
+配置始终可用。
+
+无论哪条路径，引用了不存在策略组、或内核不支持的规则类型都会被自动丢弃——留着会让
+mihomo 拒绝加载整份配置。
 
 ## 校园网
 
@@ -113,7 +132,7 @@ npm run test:mihomo # 用本机 mihomo 内核校验产出配置
 ## 参考
 
 - [Js-Sung/sub2clashmeta](https://github.com/Js-Sung/sub2clashmeta) —— **原版**，本项目的上游
-- [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) —— 分流规则来源
+- [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) —— 可选的远端分流规则来源
 - [zju-connect](https://github.com/Mythologyli/zju-connect) —— 浙大校园网连接工具
 - [SubConv](https://github.com/SubConv/SubConv)、[sublink-worker](https://github.com/7Sageer/sublink-worker)、[subconverter](https://github.com/tindy2013/subconverter)
 
