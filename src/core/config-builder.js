@@ -143,7 +143,7 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
       } else {
         const st = apply_override(cfg, zju_override);
         if (st) {
-          console.log(`---override---proxies=${st.proxies} groups=${st.groups} rules=${st.rules}`);
+          console.log(`---override---proxies=${st.proxies} groups=${st.groups} rules=${st.rules} dns=${st.dns}`);
         }
       }
     }

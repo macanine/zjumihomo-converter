@@ -4,6 +4,7 @@
 #   - proxies:      追加 ZJUconnect 节点（本机 zju-connect 提供的 SOCKS5 入口）
 #   - proxy-groups: 追加「校园网」策略组，可在 Clash 里手动切换走直连
 #   - rules:        置顶插入，优先于 ACL4SSR 拉回来的规则
+#   - dns:          把校内域名强制交给校内 DNS（10.10.0.21）解析
 #
 # 规则置顶的原因：ACL4SSR 里有 GEOIP,CN,🎯 全球直连 之类的兜底规则，
 # 如果校园网规则排在后面就永远匹配不到，所以这几条必须放在最前面。
@@ -36,3 +37,29 @@ rules:
   - DOMAIN-SUFFIX,cc98.org,🏫 校园网
   - IP-CIDR,10.0.0.0/8,🏫 校园网,no-resolve
   - IP-CIDR,172.16.0.0/12,🏫 校园网,no-resolve
+
+# 校内域名强制用校内 DNS 解析。
+#
+# 这些域名只在校园网内有解析记录（或校内解析出的地址与公网不同），
+# 交给模板里的 1.1.1.1 / 8.8.8.8 / 阿里 DNS 会拿不到结果，
+# 于是内网服务明明能连通却打不开。
+#
+# `10.10.0.21#🏫 校园网` 是 mihomo 的「DNS over proxy」写法：查询跟着
+# 策略组走——组里默认 DIRECT，在校内网时直达 10.10.0.21；切到 ZJUconnect
+# 后由 zju-connect 转发，人在校外也能解析内网域名。
+#
+# 名单与上面的 rules 保持一致，加了新的内网域名两处都要加。
+#
+# fake-ip-filter 追加这几条同样必要：命中的域名不做 fake-ip 转换，直接返回真实 IP。
+# 否则客户端拿到的是 198.18.x.x（fake-ip 段），真实地址要等 mihomo 在连接时
+# 才去解析——只有走 mihomo 的流量才用得通，绕过代理（TUN 关着、或用系统 DNS
+# 直连）的应用会拿着 198.18.x.x 连接失败。校内域名必须能被任何进程正常访问。
+dns:
+  nameserver-policy:
+    '+.zju.edu.cn': ['10.10.0.21#🏫 校园网']
+    '+.zjusec.com': ['10.10.0.21#🏫 校园网']
+    '+.cc98.org': ['10.10.0.21#🏫 校园网']
+  fake-ip-filter:
+    - '+.zju.edu.cn'
+    - '+.zjusec.com'
+    - '+.cc98.org'

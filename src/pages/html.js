@@ -108,7 +108,7 @@ function gen_html(pre) {
           <input class="form-check-input" type="checkbox" id="ovr" checked>
           <label class="form-check-label" for="ovr">
             校园网覆写
-            <span class="hint d-block">添加 ZJUconnect 节点（127.0.0.1:1090）与「校园网」策略组，并把浙大相关规则置顶</span>
+            <span class="hint d-block">添加 ZJUconnect 节点（127.0.0.1:1090）与「校园网」策略组，把浙大相关规则置顶，校内域名交给校内 DNS（10.10.0.21）解析</span>
           </label>
         </div>
       </div>

@@ -1,11 +1,12 @@
 /**
  * 应用覆写片段（默认来自项目根目录的 zju-override.yaml）。
  *
- * 覆写片段是标准的 Clash 片段，支持三个键：proxies / proxy-groups / rules。
+ * 覆写片段是标准的 Clash 片段，支持四个键：proxies / proxy-groups / rules / dns。
  * 合并语义和「追加」不同，这里是有意为之：
  *   - proxies      追加（节点名去重，同名以覆写为准）
  *   - proxy-groups 追加（同名则整体替换）
  *   - rules        置顶插入
+ *   - dns          逐键合并进模板的 dns 段（列表追加、映射表合并、标量覆盖）
  *
  * rules 必须置顶，否则毫无作用：ACL4SSR 拉回来的规则里有
  * `GEOIP,CN,🎯 全球直连` 和末尾的 `MATCH,...`，校园网规则若排在后面
@@ -17,13 +18,13 @@
 
 /**
  * @param {object} cfg       正在组装的配置（会被就地修改）
- * @param {object} override  覆写片段，含 proxies / proxy-groups / rules
+ * @param {object} override  覆写片段，含 proxies / proxy-groups / rules / dns
  * @returns {object|null} 各段合并条数，覆写为空时返回 null
  */
 function apply_override(cfg, override) {
   if (!override || typeof override !== 'object') return null;
 
-  const stats = { proxies: 0, groups: 0, rules: 0 };
+  const stats = { proxies: 0, groups: 0, rules: 0, dns: 0 };
 
   // 1. 追加节点。同名节点以覆写为准（用户显式配置的应覆盖订阅里的）
   if (Array.isArray(override.proxies) && override.proxies.length) {
@@ -49,6 +50,25 @@ function apply_override(cfg, override) {
   if (Array.isArray(override.rules) && override.rules.length) {
     cfg['rules'] = [...override.rules, ...(cfg['rules'] || [])];
     stats.rules = override.rules.length;
+  }
+
+  // 4. DNS 合并进模板。按值的类型区分语义，因为这三类东西的「正确合并方式」不同：
+  //    - 映射表（nameserver-policy）逐键合并，整体覆盖会丢掉模板里已有的条目
+  //    - 列表（fake-ip-filter）追加去重，模板里那一长串仍要生效
+  //    - 标量直接覆盖
+  if (override.dns && typeof override.dns === 'object') {
+    const base = (cfg['dns'] && typeof cfg['dns'] === 'object') ? cfg['dns'] : (cfg['dns'] = {});
+    for (const [k, v] of Object.entries(override.dns)) {
+      const cur = base[k];
+      if (Array.isArray(v) && Array.isArray(cur)) {
+        base[k] = [...cur, ...v.filter(x => !cur.includes(x))];
+      } else if (v && typeof v === 'object' && !Array.isArray(v) && cur && typeof cur === 'object' && !Array.isArray(cur)) {
+        base[k] = { ...cur, ...v };
+      } else {
+        base[k] = v;
+      }
+    }
+    stats.dns = Object.keys(override.dns).length;
   }
 
   return stats;

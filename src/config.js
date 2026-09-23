@@ -37,6 +37,11 @@ export const clash_config = {
       "fc00::/7"
     ]
   },
+  // DNS 上游分两段：校内域名由 zju-override.yaml 的 nameserver-policy 交给校内
+  // DNS 解析，这里只兜住其余（外部）域名。校园网会拦截发往校外的明文 53 端口
+  // （实测 1.1.1.1 / 8.8.8.8 / 223.5.5.5 查同一个被墙域名返回同一批错误 IP），
+  // 所以国内域名用 114 的结果是好的，国外域名靠下面那组 DoT fallback 校正——
+  // 那组走 TCP 853，没有被拦截，删掉就没有反污染能力了。
   "dns": {
     "enable": true,
     "listen": "0.0.0.0:1053",
@@ -50,9 +55,7 @@ export const clash_config = {
     "fake-ip-range": "198.18.0.1/16",
     "use-hosts": true,
     "nameserver": [
-      "1.1.1.1",
-      "8.8.8.8",
-      "https://dns.alidns.com/dns-query"
+      "114.114.114.114"
     ],
     "fallback": [
       "tls://1.1.1.1:853",

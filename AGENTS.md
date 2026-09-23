@@ -73,8 +73,40 @@ FINAL                         → MATCH,🐟 漏网之鱼
 `config-builder.js` 里有个循环把订阅节点塞进每个策略组（排除广告/拦截/直连/净化）。
 「🏫 校园网」组不能被塞进订阅节点，所以覆写必须在那个循环**之后**应用。
 
-覆写的三段语义不同：proxies 追加、proxy-groups **置顶**（校园网要排最前）、rules **置顶**
-（否则被 ACL4SSR 的 `GEOIP,CN` 和末尾 `MATCH` 抢走，永远匹配不到）。
+覆写各段语义不同：proxies 追加、proxy-groups **置顶**（校园网要排最前）、rules **置顶**
+（否则被 ACL4SSR 的 `GEOIP,CN` 和末尾 `MATCH` 抢走，永远匹配不到）；dns 段按值的类型
+合并——列表追加（`fake-ip-filter` 不能丢掉模板里那一长串）、映射表逐键合并
+（`nameserver-policy`）、标量覆盖。
+
+### DNS 上游：校内域名走校内，其余走 114
+
+上游分成两段，改的时候别只改一半：
+
+- **校内域名**（`*.zju.edu.cn` / `*.zjusec.com` / `*.cc98.org`）在公共 DNS 上查不到（或只给
+  公网入口），所以在覆写里用 `nameserver-policy` 指向 `10.10.0.21#🏫 校园网`。`#策略组` 是
+  mihomo 的 DNS over proxy 写法，查询跟着组走——组里默认 DIRECT，在校内网时直达校内 DNS；
+  切到 ZJUconnect 后由 zju-connect 转发，人在校外也能解析。
+- **其余（外部）域名**走 `src/config.js` 里的 `nameserver: 114.114.114.114`。
+
+校内那几个域名还必须同时加进 `fake-ip-filter`，光配 nameserver-policy 不够：fake-ip 生效时
+mihomo 直接把 `198.18.x.x` 发给客户端，**压根不会去问 nameserver**，真实地址只在 mihomo
+自己发起连接时才解析，绕过代理的进程拿着 fake-ip 就连不上。实测只有 `www.zju.edu.cn` 因为
+模板 `fake-ip-filter` 里的 `geosite:cn` 侥幸拿到真实 IP，`cc98.org` / `www.zjusec.com`
+都会返回 fake-ip。
+
+外部域名这一半有个前提：**校园网拦截发往校外的明文 53 端口**。实测 `1.1.1.1`、`8.8.8.8`、
+`223.5.5.5`、`119.29.29.29` 查 `www.google.com` 返回的是同一批错误 IP（Facebook 的地址），
+只有 TCP 853 没被拦。所以 114 的答案对国内域名是准的，国外域名得靠模板 `dns.fallback` 那组
+国外 DoT 校正——实测 `www.google.com` 从 114 拿到 `185.45.5.35`（错的），最终采用的是
+fallback 给出的 `142.251.x.x`。**别删那组 fallback**，删了就只剩被污染的答案。
+
+验证方式：用真实内核跑一份临时配置（端口错开），日志里查 `--> <IP> A from <上游>`：
+
+```
+www.zju.edu.cn --> [10.203.4.70] A from udp://10.10.0.21:53      # 校内
+www.baidu.com  --> [153.3.238.127 ...] A from udp://114.114.114.114:53
+www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校正
+```
 
 ### 没有本地兜底规则
 
