@@ -2,6 +2,7 @@ import yaml from 'js-yaml';
 
 import { key_default } from './core/globals.js';
 import { gen_cfg } from './core/config-builder.js';
+import { gen_relay } from './core/relay.js';
 import { content_disposition } from './core/sub-name.js';
 import { nginx } from './pages/nginx.js';
 import { gen_html } from './pages/html.js';
@@ -25,7 +26,9 @@ export default {
         let headers = { 'Content-Type': 'text/plain; charset=utf-8' };
         let par = url.searchParams;
         let t = par.get('target');
-        let u = par.get('url');
+        // 中继要把链接原样交给 api.v1.mk，所以留一份没有换行替换的
+        let raw_u = par.get('url');
+        let u = raw_u;
         if (u) {
           u = u.replaceAll('|', '\n');
         }
@@ -39,6 +42,12 @@ export default {
         });
 
         if (t == 'clash') {
+          // 中继失败（api.v1.mk 不通、链接不是它认的 URL、返回的不是配置）就落回本地转换，
+          // 客户端至少还有一份能用的配置
+          if (raw_u && (par.get('relay') == '1' || par.get('relay') == 'true')) {
+            let rr = await gen_relay(raw_u, par.get('list') == 'true' || par.get('list') == '1');
+            if (rr) return rr;
+          }
           let x = await gen_cfg(u, ...varlist);
           if (x != null) {
             let y = yaml.dump(x.data);

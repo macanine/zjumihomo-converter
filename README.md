@@ -48,6 +48,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 | `udp` `tfo` | `1` 启用、`0` 禁用、`2` 默认 |
 | `dns` | `1` 启用、`2` 仅监听、`0` 禁用 |
 | `list` | `true` 时只输出 proxies 段 |
+| `relay` | `1` 时把订阅链接交给 [api.v1.mk](https://api.v1.mk/) 转换，返回它的结果 |
 
 端口（`mixed-port` 等）和 `external-controller` 密钥不开放参数，一律用
 [src/config.js](src/config.js) 里的模板值；老链接里遗留的 `mp` `sp` `hp` `rp` `tp` `secret`
@@ -57,6 +58,11 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 拉取订阅链接时固定用 Clash Verge 的 UA（`clash-verge/v<版本>`），不转发你客户端的 UA；
 机场按 UA 区分返回内容时，这样拿到的是 Clash 那份。
+
+`relay=1` 是「中继」：把订阅链接原样交给 api.v1.mk 转换，返回的是它产出的配置，本地的
+规则、DNS、覆写等选项都不参与（表单里会置灰）。两点注意：订阅链接会交给这个第三方服务；
+它抓不到你的订阅（连接失败、403，或者返回的不是配置）时，会自动回退成本地转换，不会让
+客户端拿到一份坏配置。
 
 ## 分流规则
 

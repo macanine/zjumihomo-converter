@@ -22,6 +22,7 @@ src/
 │   ├── nodes.js          订阅解析：递归展开 base64、按行识别节点链接
 │   ├── config-builder.js 组装最终配置：去重、重命名、注入策略组、应用覆写
 │   ├── rules-fetcher.js  规则入口：内置表展开 / 运行时从 ACL4SSR 拉取
+│   ├── relay.js          中继：把订阅链接交给 api.v1.mk 转换
 │   ├── sub-name.js       推导订阅名 → Content-Disposition（客户端拿它命名配置）
 │   └── override.js       应用 zju-override.yaml（节点/策略组/置顶规则）
 ├── rules/builtin.js      内置分流规则表（默认规则来源，离线可用）
@@ -150,6 +151,26 @@ ACL4SSR 的 `ProxyMedia.list` 里有 `URL-REGEX`，mihomo v1.19 已移除该类�
 isolate 内会被后续请求读到。写法对齐 clash-verge-rev 的 `utils/network.rs`（它只设 UA，
 Accept 交给 reqwest 默认的 `*/*`），所以请求里也不再自己塞浏览器风格的 Accept。
 
+### 中继：`relay=1` 时把链接交给 api.v1.mk
+
+`src/core/relay.js`：带着订阅链接请求 `https://api.v1.mk/sub?target=clash&url=...`，把它
+产出的配置原样返回给客户端（借它的规则/重命名/emoji 处理，客户端也只看得到我们的域名）。
+几个要点：
+
+- **url 要用没做过换行替换的原始值**：本地解析会把 `|` 换成换行，而 api.v1.mk 认的是
+  `|` 分隔的原始形式，所以 `index.js` 里单独留了 `raw_u`。
+- **拉机场的 UA 用 `diyua` 参数**（值就是 `sub_ua`），否则中继和本地两条路可能拿到不同的
+  订阅内容——机场按 UA 区分返回。
+- **失败一律落回本地转换**（网络不通、非 200、body 里没有 `proxies:`）。最后那条尤其重要：
+  api.v1.mk 出错时也回 200，正文是 `No nodes were found!` 之类的纯文本，直接透传等于给
+  客户端一份坏配置。实测它还会对某些上游直接回 403（`raw.githubusercontent.com`、
+  `cdn.jsdelivr.net` 都被挡），这种情况同样落回本地。
+- 中继模式下 `rules` / `dns` / `ovr` / `udp` / `tfo` 都不参与，只有 `list` 会转成它的
+  `list=true`；表单里这些控件会置灰。
+
+验证方式：本地起 worker 打一次 `relay=1`，看返回是不是完整配置（`proxies:` + `rules:`）
+且 `Subscription-Userinfo` 跟着透传。
+
 ### 订阅名走 Content-Disposition，不是 URL 末段
 
 客户端导入订阅时用的名字来自响应头，不给我们就得拿 URL 末段——也就是接口名 `sub`。
@@ -182,7 +203,7 @@ Mihomo Party 都认这个协议。**`url=` 必须放在最后**：Clash Verge �
 ## 测试
 
 ```bash
-npm test            # 99 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
+npm test            # 46 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
 npm run test:mihomo # 用本机 mihomo 内核校验产出配置，需要网络
 ```
 
@@ -192,6 +213,21 @@ npm run test:mihomo # 用本机 mihomo 内核校验产出配置，需要网络
 **改动规则、策略组、覆写相关代码后必须跑 `npm run test:mihomo`。** 自写的检查器只能验证
 「你以为的」格式——之前规则组名位置写反、`URL-REGEX` 不受支持这两个 bug，冒烟测试全绿
 但内核直接拒绝，只有它能发现。内核路径取自 Clash Verge，没装则自动跳过。
+
+冒烟测试只留会挡住真 bug 的断言：格式约定、顺序前提、会崩或静默失效的行为。**不要往
+里加页面结构检查**（有没有某个 id、有没有引入 Bootstrap、页脚链接对不对）——改版就红，
+挡不住任何真实回归。改 `src/pages/html.js` 后请自己用浏览器按 390px 和桌面宽度各看一遍。
+
+## 前端
+
+`src/pages/html.js` 是表单页，用 Bootstrap 5（只引 CSS，不引它的 JS）。几条约定：
+
+- **配色走 Bootstrap 的 CSS 变量**（`var(--bs-body-bg)` 之类），深色模式靠 head 里那段
+  内联脚本切 `data-bs-theme` 实现，不需要另写一套深色样式。
+- **移动端优先**：小屏下输入控件字号不低于 16px（iOS 会在更小的字号上放大整个页面），
+  操作按钮吸在底部（`.actions`，内边距含安全区），列用 `col-12 col-sm-*` 堆叠。
+- 表单里出现过的元素 id（`inputText` / `rules` / `dns` / `udp` / `tfo` / `ovr` / `lm` /
+  `outputText` / `copied`）被内联脚本按 id 取用，改结构时一起改。
 
 ## 约定
 
