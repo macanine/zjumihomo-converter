@@ -66,7 +66,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 ## 分流规则
 
-默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，274 条），转换时直接
+默认用**内置规则表**（[src/rules/builtin.js](src/rules/builtin.js)，158 条），转换时直接
 展开，**不联网**——转换端出不了网也能分流，校园网里这点比覆盖面更要紧。
 
 它只写两类规则：**要走直连的**、**要单独挑节点的**，其余全部交给兜底。兜底是
@@ -75,7 +75,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 
 | 策略组 | 管什么 | 例子 |
 |---|---|---|
-| 🎯 全球直连 | 本机、局域网、路由器管理页、国内域名 | `localhost`、`baidu.com`、`edu.cn`、`GEOIP,CN` |
+| 🎯 全球直连 | 本机、局域网、路由器管理页、必应、国内域名 | `localhost`、`baidu.com`、`bing.com`、`edu.cn`、`GEOIP,CN` |
 | 🌍 国外媒体 | 流媒体：单独成组方便挑一个解锁流媒体的节点 | `youtube.com`、`netflix.com`、`spotify.com` |
 | 🤖 AI 研究 | AI 与学术：不少 AI 服务挑 IP 地区 | `openai.com`、`claude.ai`、`arxiv.org` |
 | 🐟 漏网之鱼 | 其余全部，默认走代理 | `github.com`、`steamcommunity.com` |
