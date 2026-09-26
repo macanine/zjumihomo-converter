@@ -19,14 +19,14 @@ function gen_html(pre) {
 </script>
 <style>
   /* 颜色一律走 Bootstrap 的 CSS 变量，这样深色模式不用额外写一套 */
-  body { background: var(--bs-tertiary-bg); }
+  body { background: var(--bs-tertiary-bg); min-width: 320px; }
   .app { max-width: 780px; }
-  .card { border-color: var(--bs-border-color); border-radius: 1rem; }
+  .card { border-color: var(--bs-border-color); border-radius: .75rem; overflow: hidden; }
   .brand { font-weight: 600; letter-spacing: .01em; }
   .brand small { font-weight: 400; color: var(--bs-secondary-color); }
   .form-label { font-size: .875rem; color: var(--bs-secondary-color); margin-bottom: .25rem; }
   .hint { font-size: .8rem; color: var(--bs-secondary-color); }
-  .section + .section { border-top: 1px solid var(--bs-border-color-translucent); margin-top: 1.25rem; padding-top: 1.25rem; }
+  .section + .section { border-top: 1px solid var(--bs-border-color-translucent); margin-top: 1rem; padding-top: 1rem; }
   textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
   .out { background: var(--bs-tertiary-bg); }
   /* 操作区吸在底部：手机上表单长，不用滚回去找按钮。
@@ -36,13 +36,26 @@ function gen_html(pre) {
     background: var(--bs-body-bg);
     border-top: 1px solid var(--bs-border-color);
     border-radius: 0 0 1rem 1rem;
-    padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
+    padding: .65rem .75rem calc(.65rem + env(safe-area-inset-bottom));
   }
   footer { font-size: .8rem; color: var(--bs-secondary-color); }
   /* iOS 会在字体小于 16px 的输入框获得焦点时把整个页面放大 */
   @media (max-width: 575.98px) {
+    .container.app { padding: .75rem .65rem calc(.75rem + env(safe-area-inset-bottom)) !important; }
+    .brand { font-size: 1.15rem !important; }
+    .brand small { font-size: .85rem !important; }
+    .section + .section { margin-top: .8rem; padding-top: .8rem; }
+    .row.g-3 { --bs-gutter-y: .7rem; }
+    .form-label { font-size: .8rem; }
+    .hint { font-size: .74rem; line-height: 1.35; }
     .form-control, .form-select, textarea { font-size: 1rem; }
-    .card-body { padding: 1rem; }
+    .card-body { padding: .8rem; }
+    #inputText { min-height: 92px; }
+    #outputText { min-height: 48px; }
+    .btn-group .btn { padding: .55rem .35rem; }
+    .form-switch + .form-switch { margin-top: .45rem !important; }
+    .actions .btn { white-space: nowrap; padding-left: .35rem; padding-right: .35rem; }
+    footer { margin-top: .7rem !important; }
   }
 </style>
 </head>
@@ -149,13 +162,13 @@ function gen_html(pre) {
 
     <div class="card-footer actions">
       <div class="row g-2">
-        <div class="col-12 col-sm-5">
+        <div class="col-6 col-sm-5">
           <button id="generateBtn" class="btn btn-primary w-100" type="button" onclick="processText()">生成订阅链接</button>
         </div>
-        <div class="col-6 col-sm-4">
-          <button class="btn btn-success w-100" type="button" onclick="importToClash()">一键导入</button>
+        <div class="col-3 col-sm-4">
+          <button class="btn btn-success w-100" type="button" onclick="importToClash()">导入</button>
         </div>
-        <div class="col-6 col-sm-3">
+        <div class="col-3 col-sm-3">
           <button class="btn btn-outline-secondary w-100" type="button" onclick="copyOut()">复制</button>
         </div>
       </div>
