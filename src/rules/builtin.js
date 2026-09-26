@@ -10,12 +10,14 @@
  *   - 其余（开发、下载、游戏、社交、CDN……）都归兜底走代理，逐条列举只是换个
  *     组名走同一条代理，没有意义。
  *
- * 来源是一份 GLaDOS 配置的 rules 段，按上面的原则筛过：1215 条 → 273 条，
- * 策略组也只用到模板里的三个。想恢复某个类别（比如微软、苹果、下载、成人站点），
- * 从来源里把对应段落加回来即可，组名见 src/config.js。
+ * 国内段刻意只留「日常必碰的大厂 + cn 后缀 + GEOIP」：其余国内站点解析出的
+ * 都是 CN 地址，由 GEOIP,CN 接住（上游 114 对国内域名的答案是准的），逐条
+ * 列举只是把同一件事写两遍。想要更细的覆盖面（微软、苹果、下载、游戏……），
+ * 换 ACL4SSR 预设，或从那份配置里把对应段落抄回来，组名见 src/config.js。
  *
  * 表项是 [策略组, 条目…]，条目不含逗号按域后缀展开成 DOMAIN-SUFFIX，
- * 含逗号则是完整规则（GEOIP,CN / DOMAIN-KEYWORD,google）。
+ * 含逗号则是完整规则（GEOIP,CN / DOMAIN-KEYWORD,google）。同段内被
+ * DOMAIN-KEYWORD 覆盖的 DOMAIN-SUFFIX 不重复列——同组内命中哪条结果一样。
  *
  * **顺序就是优先级**（Clash 先匹配先命中）：流媒体排在 AI 前面不是随意的——
  * AI 段里有 `DOMAIN-KEYWORD,google`，而 YouTube 的 `googlevideo.com` 也含
@@ -26,13 +28,15 @@
  */
 
 const BUILTIN_TABLE = [
-  // 本机、局域网、路由器管理页：这些地址走代理只会连不上
+  // 本机、局域网、路由器管理页：这些地址走代理只会连不上。
+  // 大多能被末尾的 GEOIP,PRIVATE 接住，但 my.router / tplogin.cn 这类公共 DNS
+  // 查不到（由路由器自己应答）的名字必须显式列出，否则 GEOIP 解析失败掉进兜底。
   ['🎯 全球直连', [
-    'localhost', 'localhost.localdomain', 'local', 'internal', 'intranet', 'corp', 'private',
+    'localhost', 'local', 'localdomain', 'internal', 'intranet', 'corp', 'private',
     'router.asus.com', 'tplinkwifi.net', 'tplogin.cn', 'tendawifi.com', 'miwifi.com', 'router.ctc',
-    'my.router', 'fritz.box', 'myrouter.local', 'netgear.com', 'routerlogin.net',
-    'linksyssmartwifi.com', 'synology.me', 'myqnapcloud.com', 'test', 'example', 'invalid',
-    'dev.local', 'test.local', 'localdomain', 'DOMAIN-KEYWORD,.local', 'DOMAIN-KEYWORD,localhost',
+    'my.router', 'fritz.box', 'routerlogin.net', 'linksyssmartwifi.com',
+    'test', 'example', 'invalid',
+    'DOMAIN-KEYWORD,.local', 'DOMAIN-KEYWORD,localhost',
   ]],
   // 必应：国内直连可达，但必须显式钉在直连。不列的话流量全靠 GEOIP,CN 兜——
   // 解析一旦落到海外边沿（IPv6、或上游给出 13.107.x / 204.79.x 这类全球地址）
@@ -43,56 +47,44 @@ const BUILTIN_TABLE = [
   ]],
   // 流媒体：单独成组是为了能挑一个解锁流媒体的节点
   ['🌍 国外媒体', [
-    'youtube.com', 'ytimg.com', 'googlevideo.com', 'youtu.be', 'youtube-nocookie.com', 'yt.be',
-    'DOMAIN-KEYWORD,youtube', 'netflix.com', 'netflix.net', 'nflximg.net', 'nflximg.com',
-    'nflxvideo.net', 'nflxso.net', 'nflxext.com', 'twitch.tv', 'twitchcdn.net', 'twitchsvc.net',
-    'jtvnw.net', 'spotify.com', 'spotifycdn.com', 'scdn.co', 'spoti.fi', 'spotify.link',
+    'ytimg.com', 'googlevideo.com', 'youtu.be', 'yt.be',
+    'DOMAIN-KEYWORD,youtube', 'netflix.com', 'nflximg.net', 'nflximg.com',
+    'nflxvideo.net', 'nflxso.net', 'nflxext.com', 'DOMAIN-KEYWORD,netflix',
+    'DOMAIN-KEYWORD,twitch', 'jtvnw.net',
+    'spotify.com', 'spotifycdn.com', 'scdn.co', 'spoti.fi', 'spotify.link',
     'disneyplus.com', 'disney-plus.net', 'dssott.com', 'bamgrid.com', 'disney.com',
     'disneystreaming.com', 'disneyaccount.com', 'hulu.com', 'huluim.com', 'hulustream.com',
-    'hbomax.com', 'max.com', 'hbo.com', 'h264.io', 'DOMAIN-KEYWORD,netflix',
-    'DOMAIN-KEYWORD,twitch',
+    'hbomax.com', 'max.com', 'hbo.com', 'h264.io',
   ]],
-  // AI 与学术：同样是为了挑节点（很多 AI 服务挑 IP 地区）
+  // AI 与学术：同样是为了挑节点（很多 AI 服务挑 IP 地区）。
+  // claude/gemini/cursor 家族只留 DOMAIN-KEYWORD，前缀域名交给关键字覆盖。
   ['🤖 AI 研究', [
     'chat.com', 'chatgpt.com', 'chatgpt.site', 'oaistatic.com', 'oaiusercontent.com', 'openai.com',
-    'sora.com', 'anthropic.com', 'claude.ai', 'claude.com', 'claudeusercontent.com',
-    'gemini.google.com', 'bard.google.com', 'deepmind.com', 'deepmind.google',
-    'aistudio.google.com', 'makersuite.google.com', 'gemini.google',
-    'generativelanguage.googleapis.com', 'ai.google.dev', 'aiplatform.googleapis.com',
-    'labs.google.com', 'notebooklm.google.com', 'perplexity.ai', 'mistral.ai', 'cohere.ai',
-    'cohere.com', 'groq.com', 'x.ai', 'grok.com', 'cursor.com', 'cursor.sh', 'cursorapi.com',
-    'together.ai', 'stability.ai', 'midjourney.com', 'poe.com', 'character.ai',
+    'sora.com', 'bard.google.com', 'deepmind.com', 'deepmind.google',
+    'aistudio.google.com', 'makersuite.google.com',
+    'ai.google.dev', 'aiplatform.googleapis.com',
+    'labs.google.com', 'notebooklm.google.com', 'perplexity.ai', 'mistral.ai',
+    'cohere.com', 'groq.com', 'x.ai', 'grok.com', 'together.ai', 'stability.ai',
+    'midjourney.com', 'poe.com', 'character.ai',
     'DOMAIN-KEYWORD,openai', 'DOMAIN-KEYWORD,claude', 'DOMAIN-KEYWORD,anthropic',
     'DOMAIN-KEYWORD,gemini.google', 'DOMAIN-KEYWORD,generativelanguage', 'DOMAIN-KEYWORD,cursor',
     'arxiv.org', 'springer.com', 'sciencedirect.com', 'nature.com', 'wiley.com', 'ieee.org',
     'acm.org', 'jstor.org', 'doi.org', 'ncbi.nlm.nih.gov', 'semanticscholar.org',
     'researchgate.net', 'zotero.org', 'overleaf.com', 'DOMAIN-KEYWORD,google',
   ]],
-  // 国内域名：列的这些是日常会碰到的，其余靠下面的 GEOIP,CN
+  // 国内域名：日常必碰的大厂 + cn 后缀 + GEOIP，其余国内站点由 GEOIP,CN 接住
   ['🎯 全球直连', [
-    'cn', 'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'qq.com', 'tencent.com', 'weixin.com',
-    'wechat.com', 'qpic.cn', 'gtimg.cn', 'qlogo.cn', 'myqcloud.com', 'tenpay.com', 'taobao.com',
-    'tmall.com', 'alipay.com', 'aliyun.com', 'alicdn.com', 'alibaba.com', 'alibabacloud.com',
-    'aliyuncs.com', '1688.com', 'aliexpress.com', 'alimama.com', 'tbcdn.cn', 'cainiao.com',
-    'ele.me', 'elemecdn.com', 'amap.com', 'autonavi.com', 'dingtalk.com', 'youku.com', 'ykimg.com',
-    'tudou.com', 'baidu.com', 'baidubce.com', 'bdstatic.com', 'bdimg.com', 'hao123.com',
-    'tieba.com', 'pan.baidu.com', 'bytedance.com', 'douyin.com', 'douyincdn.com', 'douyinpic.com',
-    'douyinstatic.com', 'amemv.com', 'snssdk.com', 'toutiao.com', 'toutiaocdn.com',
-    'toutiaoimg.com', 'pstatp.com', 'ixigua.com', 'feishu.cn', 'feishucdn.com', 'bilibili.com',
-    'bilivideo.com', 'bilivideo.cn', 'biliapi.net', 'hdslb.com', 'acgvideo.com', '163.com',
-    '126.com', 'netease.com', 'netease.im', 'ntes.com', 'youdao.com', '163yun.com', 'jd.com',
-    'jdcloud.com', 'jdpay.com', '360buyimg.com', 'jcloudcdn.com', 'iqiyi.com', 'iqiyipic.com',
-    'qiyi.com', 'pps.tv', 'ppstream.com', 'qy.net', 'sina.com.cn', 'sinaimg.cn', 'weibo.com',
-    'weibo.cn', 'weibocdn.com', 'zhihu.com', 'zhimg.com', 'xiaomi.com', 'xiaomi.cn', 'mi.com',
-    'miui.com', 'xiaomiyoupin.com', 'huawei.com', 'vmall.com', 'huaweicloud.com', 'hicloud.com',
-    'kuaishou.com', 'gifshow.com', 'kwimgs.com', 'pinduoduo.com', 'yangkeduo.com', 'meituan.com',
-    'meituan.net', 'dianping.com', 'didiglobal.com', 'xiaojukeji.com', 'sohu.com', 'sogou.com',
-    'sogoucdn.com', '360.cn', '360.com', 'douban.com', 'doubanio.com', 'ctrip.com', 'qunar.com',
-    'vip.com', 'xunlei.com', 'coolapk.com', 'ccb.com', 'icbc.com.cn', 'cmbchina.com',
-    'unionpay.com', 'cctv.com', 'xinhuanet.com', 'people.com.cn', 'chinadaily.com.cn', 'csdn.net',
-    'gitee.com', 'cnblogs.com', 'jianshu.com', 'juejin.cn', 'xuetangx.com', 'icourse163.org',
-    'mooc.cn', 'yuketang.cn', 'taptap.com', '4399.com', '7k7k.com', 'yy.com', 'duowan.com',
-    'huya.com', 'douyu.com', 'douyucdn.cn', 'GEOIP,CN', 'GEOIP,PRIVATE',
+    'qq.com', 'tencent.com', 'wechat.com', 'taobao.com', 'tmall.com', 'alipay.com',
+    'aliyun.com', 'alicdn.com', 'baidu.com', 'bdstatic.com', 'bilibili.com',
+    'bilivideo.com', 'hdslb.com', 'zhihu.com', 'weibo.com', 'jd.com', '163.com',
+    'netease.com', 'douyin.com', 'bytedance.com', 'snssdk.com', 'ixigua.com',
+    'xiaomi.com', 'mi.com', 'huawei.com', 'vmall.com', 'huaweicloud.com',
+    'meituan.com', 'dianping.com', 'didiglobal.com', 'kuaishou.com', 'pinduoduo.com',
+    'dingtalk.com', 'ele.me', 'amap.com', 'ctrip.com', 'sohu.com', 'sogou.com',
+    '360.com', 'douban.com', 'youku.com', 'iqiyi.com', 'xunlei.com', 'unionpay.com',
+    'cmbchina.com', 'csdn.net', 'gitee.com',
+    'cn', 'edu.cn',
+    'GEOIP,CN', 'GEOIP,PRIVATE',
   ]],
 ];
 
@@ -104,7 +96,7 @@ const BUILTIN_FINAL = 'MATCH,🐟 漏网之鱼';
 /**
  * 展开成 Clash 规则数组。
  * 条目不含逗号时按域后缀处理，含逗号时视为完整规则。
- * 去重按展开后的整条规则做——来源配置里有整整两段重复的 AI/学术规则。
+ * 去重按展开后的整条规则做。
  */
 function gen_builtin_rules() {
   const out = [];

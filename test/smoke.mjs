@@ -298,6 +298,14 @@ const sub = (list, caseNo = 0) =>
   check('内联 FINAL 转为 MATCH', /MATCH,🐟 漏网之鱼/.test(r.body), 'FINAL 未正确转成 MATCH');
   check('注释行被过滤', !r.body.includes('注释行'), '注释未被过滤');
 
+  // 死组剪除按「规则是否引用到」算：桩里引用到的全球拦截必须保留，
+  // 没有规则指向的组（微软服务、国外媒体…）应该被剪掉，客户端不再看到死开关
+  const y1 = await import('js-yaml').then(m => m.default.load(r.body));
+  const g1 = new Map(y1['proxy-groups'].map(g => [g.name, g]));
+  check('被规则引用的策略组保留、未引用的剪除',
+    g1.has('🛑 全球拦截') && !g1.has('Ⓜ️ 微软服务') && !g1.has('🌍 国外媒体'),
+    '实际组: ' + [...g1.keys()].join(', '));
+
   // 引用了不存在的策略组 → 必须丢掉，否则 mihomo 拒绝加载整份配置
   const ini2 = '[custom]\nruleset=不存在的组,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/UnBan.list\nruleset=🎯 全球直连,[]GEOIP,CN\n';
   const r2 = await request(sub(NODES.slice(0, 2), 2), {
@@ -354,6 +362,15 @@ const sub = (list, caseNo = 0) =>
   check('内置规则：兜底默认走代理',
     groups.get('🐟 漏网之鱼').proxies[0] === '🚀 节点选择',
     '兜底组默认是 ' + groups.get('🐟 漏网之鱼').proxies[0] + '，未匹配的流量会被漏成直连');
+
+  // 模板为 ACL4SSR 预备的组在内置规则下没有规则指向，组装时必须剪掉；
+  // 反过来被内置表引用到的组必须一个不少
+  check('内置规则：未被规则引用的策略组被剪除',
+    !groups.has('Ⓜ️ 微软服务') && !groups.has('📲 电报信息') && !groups.has('🛑 全球拦截'),
+    '实际组: ' + [...groups.keys()].join(', '));
+  check('内置规则：被规则引用的策略组保留',
+    groups.has('🌍 国外媒体') && groups.has('🤖 AI 研究') && groups.has('♻️ 自动选择'),
+    '实际组: ' + [...groups.keys()].join(', '));
   // 必应中国拒绝海外出口，GEOIP,CN 兜不住解析落到海外边沿的情况，
   // 必须有显式的直连规则钉住（见 builtin.js 里必应段的注释）
   check('内置规则：必应钉在直连',

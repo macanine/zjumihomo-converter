@@ -308,4 +308,4 @@ function filter_rules(rules, available_groups, source) {
   return { rules: kept, source, dropped };
 }
 
-export { fetch_acl4ssr_rules, resolve_rules };
+export { fetch_acl4ssr_rules, resolve_rules, rule_group };

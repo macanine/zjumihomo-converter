@@ -1,6 +1,6 @@
 import { gen_nodes } from './nodes.js';
 import { clash_config } from '../config.js';
-import { resolve_rules } from './rules-fetcher.js';
+import { resolve_rules, rule_group } from './rules-fetcher.js';
 import { apply_override, check_override } from './override.js';
 // 打包器会把这份 YAML 转成 JS 字面量内联进来，运行时不需要读文件
 import zju_override from '../../zju-override.yaml';
@@ -21,6 +21,38 @@ const FALLBACK_RULES = [
 // 校园网覆写默认开启（这是本项目的部署场景）。
 // URL 上传 ovr=0 可关闭，用于拿到不含校园网配置的通用订阅。
 const DEFAULT_OVERRIDE = true;
+
+/**
+ * 剪除没有被任何规则引用到的策略组。
+ *
+ * 模板里有一半组是给 ACL4SSR 预设预备的（微软服务、电报信息、全球拦截……）。
+ * 换成内置规则后没有任何规则指向它们，留着只会在客户端里多出一排永远不走
+ * 流量的死开关。保留集合从「规则目标」出发，把被保留组候选里引用的组也收进来
+ * （漏网之鱼→节点选择→自动选择），迭代到不再增长为止。
+ *
+ * 必须在「把节点塞进各策略组」之前跑（省得往死组里填节点），也必须在应用覆写
+ * 之前跑：覆写随后自带的「🏫 校园网」组与置顶规则成对出现，不受这里影响。
+ */
+function prune_unused_groups(cfg) {
+  const groups = cfg['proxy-groups'];
+  if (!Array.isArray(groups) || !groups.length) return;
+  const by_name = new Map(groups.map(g => [g.name, g]));
+  const used = new Set();
+  for (const r of cfg.rules || []) {
+    const t = rule_group(r);
+    if (t && by_name.has(t)) used.add(t);
+  }
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const g of groups) {
+      if (!used.has(g.name) || !Array.isArray(g.proxies)) continue;
+      for (const p of g.proxies) {
+        if (by_name.has(p) && !used.has(p)) { used.add(p); grew = true; }
+      }
+    }
+  }
+  cfg['proxy-groups'] = groups.filter(g => used.has(g.name));
+}
 
 
 async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
@@ -114,6 +146,7 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
       cfg['rules'] = FALLBACK_RULES.slice();
       console.log('---rules---fallback (远端不可用，仅保留最小分流)');
     }
+    prune_unused_groups(cfg);
 
     // 处理策略组
     try {
