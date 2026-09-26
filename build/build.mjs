@@ -24,6 +24,16 @@ const yamlPlugin = {
   },
 };
 
+const htmlPlugin = {
+  name: 'html-template',
+  setup(api) {
+    api.onLoad({ filter: /\.html$/i }, async (args) => ({
+      contents: await fs.promises.readFile(args.path, 'utf8'),
+      loader: 'text',
+    }));
+  },
+};
+
 const banner = `/**
  * zjumihomo —— 单文件 Cloudflare Pages Function
  * 本文件由 esbuild 从 src/ 自动生成，请勿直接编辑。
@@ -38,7 +48,7 @@ try {
     format: 'esm',
     platform: 'neutral',
     target: 'es2022',
-    plugins: [yamlPlugin],
+    plugins: [yamlPlugin, htmlPlugin],
     banner: { js: banner },
     sourcemap: false,
     legalComments: 'none',

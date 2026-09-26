@@ -5,7 +5,7 @@ import { gen_cfg } from './core/config-builder.js';
 import { gen_relay } from './core/relay.js';
 import { content_disposition } from './core/sub-name.js';
 import { nginx } from './pages/nginx.js';
-import { gen_html } from './pages/html.js';
+import form_html from './pages/form.html';
 import { gen_icon } from './pages/favicon.js';
 
 export default {
@@ -20,7 +20,10 @@ export default {
       const SUBINF = '/sub';   // 订阅转换接口
       let path = url.pathname.slice(key.length + 1);
       if (path.search(new RegExp('^(?:|\/(index.html?)?)$')) != -1) {
-        return gen_html(url.origin + '/' + key + SUBINF + '?');
+        return new Response(form_html.replace('__SUB_URL__', url.origin + '/' + key + SUBINF + '?'), {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
       }
       else if (path == SUBINF) {
         let headers = { 'Content-Type': 'text/plain; charset=utf-8' };
