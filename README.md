@@ -10,10 +10,6 @@ Clash 订阅转换器，为**浙江大学校园网**环境定制。
 
 源码使用 ESM，构建由开源 esbuild 完成；部署在 **Cloudflare Pages**，产物是单个自包含的 worker 文件。
 
-本项目基于 [Js-Sung/sub2clashmeta](https://github.com/Js-Sung/sub2clashmeta) 改造：上游负责
-通用的订阅转换，这里在其之上加了校园网覆写、运行时拉取 ACL4SSR 规则等定制，并把单文件的
-`dist/_worker.js` 拆成 `src/` 下可维护的模块。感谢原作者。
-
 ## 快速开始
 
 ```bash
@@ -79,9 +75,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 | 🤖 AI 研究 | AI 与学术：不少 AI 服务挑 IP 地区 | `openai.com`、`claude.ai`、`arxiv.org` |
 | 🐟 漏网之鱼 | 其余全部，默认走代理 | `github.com`、`steamcommunity.com` |
 
-要把某个类别单独拆出来（微软、苹果、下载、成人站点……），在内置表里加一段、组名用
-[src/config.js](src/config.js) 里已有的组就行；想让未匹配的流量走直连，改 🐟 漏网之鱼 的
-候选顺序即可。
+要增加分流类别，在内置规则表中添加规则，并使用 [src/config.js](src/config.js) 里已有的组名。
 
 要更全的覆盖面可以把 `rules` 换成 ACL4SSR 预设（`mini` 约 3400 条、`full` 约 9500 条），
 此时规则在转换时从云端拉取，**需要转换端能访问 GitHub**（内置 raw / ghfast.top / jsdelivr
