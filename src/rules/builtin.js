@@ -34,6 +34,13 @@ const BUILTIN_TABLE = [
     'linksyssmartwifi.com', 'synology.me', 'myqnapcloud.com', 'test', 'example', 'invalid',
     'dev.local', 'test.local', 'localdomain', 'DOMAIN-KEYWORD,.local', 'DOMAIN-KEYWORD,localhost',
   ]],
+  // 必应：国内直连可达，但必须显式钉在直连。不列的话流量全靠 GEOIP,CN 兜——
+  // 解析一旦落到海外边沿（IPv6、或上游给出 13.107.x / 204.79.x 这类全球地址）
+  // GEOIP 就接不住，流量掉进兜底组走代理，而必应中国对海外出口直接拒绝访问
+  // （cn.bing.com 报「无法访问」）。直连组是选择器，想走代理可在客户端里切。
+  ['🎯 全球直连', [
+    'bing.com', 'bing.cn', 'bingapis.com',
+  ]],
   // 流媒体：单独成组是为了能挑一个解锁流媒体的节点
   ['🌍 国外媒体', [
     'youtube.com', 'ytimg.com', 'googlevideo.com', 'youtu.be', 'youtube-nocookie.com', 'yt.be',

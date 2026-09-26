@@ -354,6 +354,10 @@ const sub = (list, caseNo = 0) =>
   check('内置规则：兜底默认走代理',
     groups.get('🐟 漏网之鱼').proxies[0] === '🚀 节点选择',
     '兜底组默认是 ' + groups.get('🐟 漏网之鱼').proxies[0] + '，未匹配的流量会被漏成直连');
+  // 必应中国拒绝海外出口，GEOIP,CN 兜不住解析落到海外边沿的情况，
+  // 必须有显式的直连规则钉住（见 builtin.js 里必应段的注释）
+  check('内置规则：必应钉在直连',
+    yaml.rules.includes('DOMAIN-SUFFIX,bing.com,🎯 全球直连'), '缺少必应直连规则');
 
   // 规则的目标必须存在，否则 mihomo 拒绝加载整份配置。逐条解析后判断，
   // 而不是按文本匹配——文本匹配会把策略组名那一段漏掉。
