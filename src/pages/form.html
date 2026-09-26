@@ -17,6 +17,10 @@
   .app { max-width: 780px; }
   .card { border-color: var(--bs-border-color); border-radius: .75rem; overflow: hidden; }
   .brand { font-weight: 600; letter-spacing: .01em; }
+  .brand-lockup { display: inline-flex; align-items: center; gap: .55rem; }
+  .cat-logo { position: relative; display: inline-block; width: 2.15rem; height: 2.15rem; image-rendering: pixelated; background: var(--bs-primary); clip-path: polygon(0 25%, 25% 25%, 25% 0, 40% 15%, 60% 15%, 75% 0, 75% 25%, 100% 25%, 100% 100%, 0 100%); }
+  .cat-logo::before { content: ''; position: absolute; width: .38rem; height: .38rem; left: .52rem; top: .88rem; background: var(--bs-body-bg); box-shadow: .75rem 0 var(--bs-body-bg); }
+  .cat-logo::after { content: ''; position: absolute; width: .38rem; height: .38rem; left: .9rem; top: 1.48rem; background: var(--bs-body-bg); box-shadow: -.38rem 0 var(--bs-body-bg), .38rem 0 var(--bs-body-bg); }
   .brand small { font-weight: 400; color: var(--bs-secondary-color); }
   .form-label { font-size: .875rem; color: var(--bs-secondary-color); margin-bottom: .25rem; }
   .hint { font-size: .8rem; color: var(--bs-secondary-color); }
@@ -57,7 +61,7 @@
 <div class="container app py-4">
 
   <div class="d-flex align-items-baseline justify-content-between mb-3">
-    <div class="brand fs-4">zjumihomo <small class="fs-6">订阅转换</small></div>
+    <div class="brand-lockup"><span class="cat-logo" role="img" aria-label="像素猫"></span><div class="brand fs-4">zjumihomo <small class="fs-6">订阅转换</small></div></div>
     <span class="hint">mihomo</span>
   </div>
 
