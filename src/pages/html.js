@@ -133,8 +133,8 @@ function gen_html(pre) {
         <div class="form-check form-switch mt-3">
           <input class="form-check-input" type="checkbox" id="relay" onchange="syncDisabled()">
           <label class="form-check-label" for="relay">
-            经 api.v1.mk 中继
-            <span class="hint d-block">订阅链接交给 api.v1.mk 转，本地这些选项不生效</span>
+            经 api.v1.mk 获取节点
+            <span class="hint d-block">仅借 api.v1.mk 拉取节点，规则、DNS 和覆写仍使用本项目配置</span>
           </label>
         </div>
       </div>
@@ -170,10 +170,9 @@ function gen_html(pre) {
 </div>
 
 <script>
-// 中继模式只把链接转给 api.v1.mk，仅输出列表也只剩节点——两种情况下这些本地选项
-// 都没有意义，置灰避免误解
+// 仅输出列表或经 api.v1.mk 获取节点时，规则等选项仍由本项目处理；只有列表模式会置灰它们
 function syncDisabled() {
-  var on = document.getElementById('lm').checked || document.getElementById('relay').checked;
+  var on = document.getElementById('lm').checked;
   ['rules', 'dns', 'ovr'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -199,7 +198,7 @@ function processText() {
   var listOn = document.getElementById('lm').checked;
   if (relayOn) { js.relay = '1'; }
 
-  if (!relayOn) {
+  {
     ['udp', 'tfo'].forEach(function (n) {
       try {
         var els = document.getElementsByName(n);
@@ -212,7 +211,7 @@ function processText() {
 
   if (listOn) {
     js['list'] = 'true';
-  } else if (!relayOn) {
+  } else {
     try {
       var dns = document.getElementById('dns').value;
       if (dns) { js['dns'] = dns; }
@@ -223,8 +222,7 @@ function processText() {
     } catch (e) {}
   }
 
-  // 校园网覆写：勾选时不传参（默认开启），取消勾选时显式传 0 关闭。中继模式下由
-  // api.v1.mk 出配置，这个开关不参与。
+  // 校园网覆写：勾选时不传参（默认开启），取消勾选时显式传 0 关闭。
   try {
     if (!relayOn && !document.getElementById('ovr').checked) { js.ovr = '0'; }
   } catch (e) {}

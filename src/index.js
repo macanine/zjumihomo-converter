@@ -44,11 +44,11 @@ export default {
         if (t == 'clash') {
           // 中继失败（api.v1.mk 不通、链接不是它认的 URL、返回的不是配置）就落回本地转换，
           // 客户端至少还有一份能用的配置
+          let relay_result = null;
           if (raw_u && (par.get('relay') == '1' || par.get('relay') == 'true')) {
-            let rr = await gen_relay(raw_u, par.get('list') == 'true' || par.get('list') == '1');
-            if (rr) return rr;
+            relay_result = await gen_relay(raw_u);
           }
-          let x = await gen_cfg(u, ...varlist);
+          let x = await gen_cfg(relay_result ? relay_result.body : u, ...varlist);
           if (x != null) {
             let y = yaml.dump(x.data);
             let up = x.up;
@@ -57,6 +57,12 @@ export default {
             let ex = x.ex;
             if (!isNaN(up) && !isNaN(dn) && !isNaN(to) && !isNaN(ex)) {
               headers['Subscription-Userinfo'] = `upload=${up}; download=${dn}; total=${to}; expire=${ex}`;
+            }
+            if (relay_result) {
+              let relay_ui = relay_result.headers['subscription-userinfo'];
+              if (relay_ui) headers['Subscription-Userinfo'] = relay_ui;
+              let relay_cd = relay_result.headers['content-disposition'];
+              if (relay_cd) headers['Content-Disposition'] = relay_cd;
             }
             // 客户端拿它给新配置命名，否则名字就是 URL 末段「sub」
             let cd = content_disposition(x.sub_name, u);

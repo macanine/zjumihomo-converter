@@ -439,8 +439,8 @@ const sub = (list, caseNo = 0) =>
 }
 
 /* ── api.v1.mk 中继 ──
- * relay=1 时把订阅链接交给 api.v1.mk 转，结果原样交给客户端；它那边出问题就落回
- * 本地转换。这里用桩 fetch 扮演 api.v1.mk，检查我们发过去的参数和透传的响应头。 */
+ * relay=1 时只把订阅链接交给 api.v1.mk 获取节点，最终仍由本地组装配置；失败就落回
+ * 原始订阅的本地转换。 */
 {
   let seen = null;
   const upstream = async (req) => {
@@ -465,8 +465,8 @@ const sub = (list, caseNo = 0) =>
     q.get('url') === 'https://airport.example.com/link/x' &&
     q.get('diyua').startsWith('clash-verge/v'),
     '实际请求 ' + seen);
-  check('中继：原样返回 api.v1.mk 的配置和流量信息',
-    r.body.includes('中继节点') && r.headers.get('subscription-userinfo') === 'upload=1; download=2; total=3; expire=4',
+  check('中继：api.v1.mk 只提供节点，本地组装配置',
+    r.body.includes('中继节点') && r.body.includes('rules:') && r.headers.get('subscription-userinfo') === 'upload=1; download=2; total=3; expire=4',
     'body=' + r.body.slice(0, 40) + ' userinfo=' + r.headers.get('subscription-userinfo'));
 }
 {
