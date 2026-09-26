@@ -59,9 +59,9 @@ function gen_html(pre) {
 
       <div class="section">
         <label for="inputText" class="form-label">订阅链接</label>
-        <textarea id="inputText" class="form-control" rows="4"
+        <textarea id="inputText" class="form-control" rows="4" aria-describedby="inputHint" autofocus
           placeholder="粘贴订阅链接、base64 订阅内容，或节点链接"></textarea>
-        <div class="hint mt-1">支持 ss / ssr / vmess / trojan / vless / hysteria / hysteria2；多个每行一个，也可用 | 分隔</div>
+        <div id="inputHint" class="hint mt-1">支持 ss / ssr / vmess / trojan / vless / hysteria / hysteria2；多个每行一个，也可用 | 分隔</div>
       </div>
 
       <div class="section">
@@ -150,13 +150,13 @@ function gen_html(pre) {
     <div class="card-footer actions">
       <div class="row g-2">
         <div class="col-12 col-sm-5">
-          <button class="btn btn-primary w-100" onclick="processText()">生成订阅链接</button>
+          <button id="generateBtn" class="btn btn-primary w-100" type="button" onclick="processText()">生成订阅链接</button>
         </div>
         <div class="col-6 col-sm-4">
-          <button class="btn btn-success w-100" onclick="importToClash()">一键导入</button>
+          <button class="btn btn-success w-100" type="button" onclick="importToClash()">一键导入</button>
         </div>
         <div class="col-6 col-sm-3">
-          <button class="btn btn-outline-secondary w-100" onclick="copyOut()">复制</button>
+          <button class="btn btn-outline-secondary w-100" type="button" onclick="copyOut()">复制</button>
         </div>
       </div>
       <div id="copied" class="hint mt-1"></div>
@@ -187,7 +187,11 @@ function syncDisabled() {
 function processText() {
   var a, js = {};
   a = document.getElementById('inputText').value.trim();
-  if (!a) { return; }
+  var tip = document.getElementById('copied');
+  var button = document.getElementById('generateBtn');
+  if (!a) { tip.textContent = '请先粘贴订阅链接或节点'; document.getElementById('inputText').focus(); return; }
+  button.disabled = true;
+  button.textContent = '已生成';
   js.url = a.split('\\n').join('|');
   js.target = 'clash';
 
@@ -227,7 +231,8 @@ function processText() {
 
   document.getElementById('outputText').value =
     '${pre}' + new URLSearchParams(js).toString();
-  document.getElementById('copied').textContent = '';
+  tip.textContent = '链接已生成，可复制或一键导入';
+  window.setTimeout(function () { button.disabled = false; button.textContent = '生成订阅链接'; }, 900);
 }
 
 // 唤起本机 Clash 客户端导入订阅。clash://install-config?url= 是 Clash Verge、
@@ -249,7 +254,7 @@ function importToClash() {
 function copyOut() {
   var el = document.getElementById('outputText');
   if (!el.value) { return; }
-  var done = function () { document.getElementById('copied').textContent = '已复制'; };
+  var done = function () { document.getElementById('copied').textContent = '已复制到剪贴板'; };
   if (navigator.clipboard) {
     navigator.clipboard.writeText(el.value).then(done, function () { el.select(); });
   } else {
@@ -257,6 +262,14 @@ function copyOut() {
     try { document.execCommand('copy'); done(); } catch (e) {}
   }
 }
+
+document.getElementById('inputText').addEventListener('keydown', function (event) {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault();
+    processText();
+  }
+});
+syncDisabled();
 </script>
 </body>
 </html>`;
