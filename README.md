@@ -8,7 +8,7 @@ Clash 订阅转换器，为**浙江大学校园网**环境定制。
   也可以换成运行时从 [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) 拉取、跟随上游更新
 - 自动加入指向本机 zju-connect 的 SOCKS5 节点和「🏫 校园网」策略组
 
-纯 JavaScript，零依赖，部署在 **Cloudflare Pages** 上，产物是单个自包含的 worker 文件。
+源码使用 ESM，构建由开源 esbuild 完成；部署在 **Cloudflare Pages**，产物是单个自包含的 worker 文件。
 
 本项目基于 [Js-Sung/sub2clashmeta](https://github.com/Js-Sung/sub2clashmeta) 改造：上游负责
 通用的订阅转换，这里在其之上加了校园网覆写、运行时拉取 ACL4SSR 规则等定制，并把单文件的
