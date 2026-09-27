@@ -37,7 +37,7 @@ export default {
         }
 
         // 其他配置参数。端口和 UI 密钥不再开放，用 src/config.js 里的默认值。
-        let varnamelist = ['udp', 'tfo', 'dns', 'list', 'rules', 'ovr'];
+        let varnamelist = ['udp', 'tfo', 'dns', 'list', 'rules', 'ovr', 'emoji'];
         let varlist = [];
         varnamelist.forEach((v) => {
           let w = par.get(v) || undefined;

@@ -203,6 +203,8 @@ Mihomo Party 都认这个协议。**`url=` 必须放在最后**：Clash Verge �
 
 ### 端口和 UI 密钥不做成参数
 
+节点名称的 `emoji` 参数支持三种模式：`0` 移除全部 emoji，`1` 保留 emoji 但把 `🇹🇼` 替换为 `🇨🇳`（默认），`2` 完整保留。该处理只作用于订阅节点名称。
+
 `mixed-port` / `socks-port` / `redir-port` / `tproxy-port` / `port` / `secret` 一律用
 `src/config.js` 的模板值，表单和 URL 参数都不再暴露（改端口就改 `config.js`）。
 `mp` `sp` `hp` `rp` `tp` `secret` 这些老参数会被静默忽略。

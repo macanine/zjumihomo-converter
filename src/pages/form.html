@@ -78,6 +78,19 @@
 
       <div class="section">
         <div class="row g-3">
+          <div class="col-12">
+            <label for="emoji" class="form-label">节点 Emoji</label>
+            <select id="emoji" class="form-select">
+              <option value="1" selected>保留 Emoji，台湾旗帜替换为中国大陆旗帜</option>
+              <option value="0">移除全部 Emoji</option>
+              <option value="2">保留所有 Emoji</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="row g-3">
           <div class="col-12 col-sm-7">
             <label for="rules" class="form-label">分流规则</label>
             <select id="rules" class="form-select">
@@ -204,6 +217,7 @@ function processText() {
   button.textContent = '已生成';
   js.url = a.split('\\n').join('|');
   js.target = 'clash';
+  js.emoji = document.getElementById('emoji').value;
 
   var relayOn = document.getElementById('relay').checked;
   var listOn = document.getElementById('lm').checked;

@@ -44,6 +44,7 @@ https://<域名>/<key>/sub?target=clash&url=<订阅链接>
 | `udp` `tfo` | `1` 启用、`0` 禁用、`2` 默认 |
 | `dns` | `1` 启用、`2` 仅监听、`0` 禁用 |
 | `list` | `true` 时只输出 proxies 段 |
+| `emoji` | 节点名称处理：`0` 移除全部、`1` 保留并将台湾旗帜替换为中国大陆旗帜（默认）、`2` 完整保留 |
 | `relay` | `1` 时仅通过 [api.v1.mk](https://api.v1.mk/) 获取节点，规则、DNS、覆写和最终配置仍由本项目生成 |
 
 端口（`mixed-port` 等）和 `external-controller` 密钥不开放参数，一律用

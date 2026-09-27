@@ -2,6 +2,7 @@ import { gen_nodes } from './nodes.js';
 import { clash_config } from '../config.js';
 import { resolve_rules, rule_group } from './rules-fetcher.js';
 import { apply_override, check_override } from './override.js';
+import { normalize_node_emoji } from './node-emoji.js';
 // 打包器会把这份 YAML 转成 JS 字面量内联进来，运行时不需要读文件
 import zju_override from '../../zju-override.yaml';
 
@@ -55,7 +56,7 @@ function prune_unused_groups(cfg) {
 }
 
 
-async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
+async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr, emoji) {
   let proxy = {}, nodes_name;
   let cfg;
 
@@ -92,8 +93,9 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr) {
       s.add(key);
       return true;
     });
+    proxy.nodes = i.map(obj => ({ ...obj, name: normalize_node_emoji(obj.name, emoji) }));
     let m = new Map();
-    proxy.nodes = i.map(obj => {
+    proxy.nodes = proxy.nodes.map(obj => {
       let o = obj.name;
       if (m.has(o)) {
         let r = Math.random().toString(36).substring(2, 12);
