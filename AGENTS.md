@@ -86,6 +86,12 @@ FINAL                         → MATCH,🐟 漏网之鱼
   公网入口），所以在覆写里用 `nameserver-policy` 指向 `10.10.0.21#🏫 校园网`。`#策略组` 是
   mihomo 的 DNS over proxy 写法，查询跟着组走——组里默认 DIRECT，在校内网时直达校内 DNS；
   切到 ZJUconnect 后由 zju-connect 转发，人在校外也能解析。
+- **例外：`webvpn.zju.edu.cn` 走公共 DNS**。它是校外门户，公共 DNS 本来就有解析记录
+  （210.32.3.80），而且必须不依赖校内 DNS——不然校外（「校园网」组默认 DIRECT）查询直接
+  失败，连登录页都打不开。覆写里用精确域名条目指回公共上游（`114.114.114.114` +
+  `tls://1.1.1.1:853`）：nameserver-policy 最长匹配优先，精确条目会盖过 `+.zju.edu.cn`
+  通配；且命中策略的域名**不再走模板的 fallback**，所以两级公共上游要直接写进条目。
+  rules 里它走 DIRECT 也是同一个理由。
 - **其余（外部）域名**走 `src/config.js` 里的 `nameserver: 114.114.114.114`。
 
 校内那几个域名还必须同时加进 `fake-ip-filter`，光配 nameserver-policy 不够：fake-ip 生效时
@@ -104,6 +110,7 @@ fallback 给出的 `142.251.x.x`。**别删那组 fallback**，删了就只剩�
 
 ```
 www.zju.edu.cn --> [10.203.4.70] A from udp://10.10.0.21:53      # 校内
+webvpn.zju.edu.cn --> [210.32.3.80] A from udp://114.114.114.114:53 / tls://1.1.1.1:853  # 例外：公共上游
 www.baidu.com  --> [153.3.238.127 ...] A from udp://114.114.114.114:53
 www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校正
 ```
