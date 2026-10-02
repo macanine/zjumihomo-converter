@@ -23,6 +23,16 @@ const FALLBACK_RULES = [
 // URL 上传 ovr=0 可关闭，用于拿到不含校园网配置的通用订阅。
 const DEFAULT_OVERRIDE = true;
 
+function stable_value(value) {
+  if (Array.isArray(value)) return value.map(stable_value);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).filter(k => k !== 'name').sort().map(k => [k, stable_value(value[k])]));
+}
+
+function node_fingerprint(node) {
+  return JSON.stringify(stable_value(node));
+}
+
 /**
  * 剪除没有被任何规则引用到的策略组。
  *
@@ -63,6 +73,8 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr, emoj
   if (typeof (data) != 'string' || data.length < 1) {
     return null;
   }
+  proxy.subscription_bytes = new TextEncoder().encode(data).byteLength;
+  if (proxy.subscription_bytes > 2 * 1024 * 1024) return null;
 
   const is_list = !!(listmode && /true/i.test(listmode));
   const want_rules = (rules_sel === undefined || rules_sel === '') ? DEFAULT_RULES : rules_sel;
@@ -83,28 +95,27 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr, emoj
     return null;
   }
 
-  // 处理节点数据：去重和name重命名
+  // 处理节点数据：按完整连接配置去重。同一服务器端口可能承载不同协议或凭据。
   try {
     let s = new Set();
     let i = proxy.nodes.filter(obj => {
       if (!obj.name) return false;
-      let key = `${obj.server}-${obj.port}`;
+      let key = node_fingerprint(obj);
       if (s.has(key)) return false;
       s.add(key);
       return true;
     });
     proxy.nodes = i.map(obj => ({ ...obj, name: normalize_node_emoji(obj.name, emoji) }));
-    let m = new Map();
+    let used_names = new Set();
+    let name_counts = new Map();
     proxy.nodes = proxy.nodes.map(obj => {
-      let o = obj.name;
-      if (m.has(o)) {
-        let r = Math.random().toString(36).substring(2, 12);
-        let n = `${o}-${r}`;
-        return { ...obj, name: n };
-      } else {
-        m.set(o, true);
-        return obj;
-      }
+      const base = obj.name;
+      let count = name_counts.get(base) || 1;
+      let candidate = count === 1 ? base : `${base}-${count}`;
+      while (used_names.has(candidate)) candidate = `${base}-${++count}`;
+      name_counts.set(base, count + 1);
+      used_names.add(candidate);
+      return candidate === base ? obj : { ...obj, name: candidate };
     });
     nodes_name = proxy.nodes.map(item => item.name);
     console.log(`---nodes---${proxy.nodes.length} up=${proxy.up} dn=${proxy.dn} total=${proxy.to} expire=${proxy.ex}`);
@@ -138,7 +149,7 @@ async function gen_cfg(data, udp_en, tfo_en, dns, listmode, rules_sel, ovr, emoj
     cfg = structuredClone(clash_config);
     cfg['proxies'] = proxy.nodes;
 
-    // 规则：一律来自远端拉取；拉不到就用最小兜底，保证配置始终合法可用
+    // 规则默认来自内置表；选择 ACL4SSR 时才拉远端，失败则用最小兜底保证配置可用。
     await rules_promise;
     if (rules_result && rules_result.rules.length) {
       cfg['rules'] = rules_result.rules;

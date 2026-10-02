@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import { sub_ua } from './globals.js';
-import { isValidUrl, contentTypeIsText, decodeBase64 } from './utils.js';
+import { isValidUrl, fetch_text_limited, MAX_FETCH_BYTES, contentTypeIsText, decodeBase64 } from './utils.js';
 import { name_from_headers } from './sub-name.js';
 import { decode_ss } from '../protocols/ss.js';
 import { decode_ssr } from '../protocols/ssr.js';
@@ -11,7 +11,12 @@ import { decode_hysteria2 } from '../protocols/hysteria2.js';
 import { decode_vless } from '../protocols/vless.js';
 
 
-async function gen_nodes(data, proxy) {
+const MAX_NODES = 1000;
+const MAX_BASE64_DEPTH = 5;
+const MAX_SUBSCRIPTION_FETCHES = 50;
+const MAX_TOTAL_SUBSCRIPTION_BYTES = 8 * 1024 * 1024;
+
+async function gen_nodes(data, proxy, depth = 0) {
   if (!data || !proxy) {
     return null;
   }
@@ -49,10 +54,11 @@ async function gen_nodes(data, proxy) {
   if (typeof (data) != 'string' || data.length < 1) {
     return null;
   }
+  if (data.length > MAX_FETCH_BYTES || proxy.nodes.length >= MAX_NODES) return null;
   if (!/[^-_a-zA-Z0-9+/=\r\n ]/.test(data)) {
     let d0 = decodeBase64(data);
     if (d0 != null) {
-      await gen_nodes(d0, proxy);
+      if (depth < MAX_BASE64_DEPTH) await gen_nodes(d0, proxy, depth + 1);
       return null;
     }
   } else {
@@ -60,18 +66,19 @@ async function gen_nodes(data, proxy) {
       let d1 = yaml.load(data);
       let nodes = d1['proxies'];
       if (nodes && nodes.length > 0) {
-        proxy.nodes.push(...nodes);
+        proxy.nodes.push(...nodes.slice(0, MAX_NODES - proxy.nodes.length));
         return null;
       }
-    } catch (e) {
-      console.error("yaml error: %o", e);
+    } catch {
+      // 订阅内容可能含凭据，解析器错误会带原文片段，日志只记事件不回显内容。
+      console.warn('subscription YAML parse failed');
     }
     data = data.trim();
     var lines = data.split('\n');
     for (let i = 0; i < lines.length; i++) {
       let n = lines[i].trim();
       if (!/[^-_a-zA-Z0-9+/=\r\n ]/.test(n)) {
-        await gen_nodes(n, proxy);
+        if (depth < MAX_BASE64_DEPTH) await gen_nodes(n, proxy, depth + 1);
         continue;
       } else {
         var pre = n.split('://')[0];
@@ -91,7 +98,10 @@ async function gen_nodes(data, proxy) {
             break;
           case 'http':
           case 'https':
-            await gen_nodes(await decode_link(n), proxy);
+            if ((proxy.subscription_fetches || 0) < MAX_SUBSCRIPTION_FETCHES) {
+              proxy.subscription_fetches = (proxy.subscription_fetches || 0) + 1;
+              await gen_nodes(await decode_link(n, proxy), proxy, depth + 1);
+            }
             break;
           case 'hysteria':
             node = decode_hysteria(n);
@@ -104,7 +114,7 @@ async function gen_nodes(data, proxy) {
             node = decode_vless(n);
             break;
         }
-        if (node != null) {
+        if (node != null && proxy.nodes.length < MAX_NODES) {
           proxy.nodes.push(node);
         }
       }
@@ -114,21 +124,27 @@ async function gen_nodes(data, proxy) {
 }
 
 
-async function decode_link(url) {
-  var t, r, req, z, up, dn, to, ex;
+async function decode_link(url, proxy) {
+  var t, r, z, up, dn, to, ex;
   if (!isValidUrl(url)) return null;
+  const remaining_bytes = MAX_TOTAL_SUBSCRIPTION_BYTES - (proxy.subscription_bytes || 0);
+  if (remaining_bytes <= 0) return null;
+  const started = Date.now();
   try {
     // 只发 UA（Clash Verge 自己也不设 Accept，reqwest 默认就是 */*）。
     // 之前那个浏览器风格的 Accept 跟 clash-verge 的 UA 是矛盾的组合，
     // 按 Accept 判断「浏览器访问」的面板会回一份 HTML 首页。
-    req = new Request(url, { 'method': 'GET', 'headers': { 'User-Agent': sub_ua } });
-    r = await fetch(req);
-    if (!contentTypeIsText(r.headers) || r.status != 200) {
+    const fetched = await fetch_text_limited(url, { timeout: 8000, maxBytes: Math.min(MAX_FETCH_BYTES, remaining_bytes), headers: { 'User-Agent': sub_ua } });
+    r = fetched.response;
+    if (!contentTypeIsText(r.headers) || r.status != 200 || fetched.text == null) {
       return null;
     }
-    t = await r.text();
+    t = fetched.text;
+    const bytes = new TextEncoder().encode(t).byteLength;
+    proxy.subscription_bytes = (proxy.subscription_bytes || 0) + bytes;
+    console.info(`subscription fetch ok ms=${Date.now() - started} bytes=${bytes}`);
   } catch (e) {
-    console.error("fetch error: " + url + '\n', e);
+    console.warn(`subscription fetch failed ms=${Date.now() - started}: ` + (e && e.message ? e.message : 'request error'));
     return null;
   }
 

@@ -4,6 +4,7 @@ import { key_default } from './core/globals.js';
 import { gen_cfg } from './core/config-builder.js';
 import { gen_relay } from './core/relay.js';
 import { content_disposition } from './core/sub-name.js';
+import { MAX_FETCH_BYTES } from './core/utils.js';
 import { nginx } from './pages/nginx.js';
 import form_html from './pages/form.html';
 import { gen_icon } from './pages/favicon.js';
@@ -31,6 +32,9 @@ export default {
         let t = par.get('target');
         // 中继要把链接原样交给 api.v1.mk，所以留一份没有换行替换的
         let raw_u = par.get('url');
+        if (raw_u && raw_u.length > MAX_FETCH_BYTES) {
+          return new Response('subscription input too large.', { status: 413, headers });
+        }
         let u = raw_u;
         if (u) {
           u = u.replaceAll('|', '\n');

@@ -1,4 +1,5 @@
 import { sub_ua } from './globals.js';
+import { fetch_text_limited, MAX_FETCH_BYTES } from './utils.js';
 
 // 中继：只借 api.v1.mk 拉取并标准化节点，最终配置仍由本项目组装。
 //
@@ -12,17 +13,17 @@ async function gen_relay(url) {
 
   let r, body;
   try {
-    r = await fetch(new Request(RELAY_ENDPOINT + '?' + q.toString(), {
-      method: 'GET',
-      headers: { 'User-Agent': sub_ua },
-    }));
+    const fetched = await fetch_text_limited(RELAY_ENDPOINT + '?' + q.toString(), {
+      timeout: 10000, maxBytes: MAX_FETCH_BYTES, headers: { 'User-Agent': sub_ua },
+    });
+    r = fetched.response;
     if (r.status != 200) {
       console.warn('relay: api.v1.mk 返回 ' + r.status);
       return null;
     }
-    body = await r.text();
+    body = fetched.text;
   } catch (e) {
-    console.warn('relay: 请求 api.v1.mk 失败 ' + e);
+    console.warn('relay: 请求失败 ' + (e && e.message ? e.message : 'request error'));
     return null;
   }
 

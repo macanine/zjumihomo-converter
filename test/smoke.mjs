@@ -10,7 +10,7 @@
  * 顺序前提（覆写置顶、google 关键字不抢流媒体、兜底默认走代理）、以及会崩或
  * 静默失效的行为。页面结构、状态码之类的形状检查不在这里锁——改版就红，没有价值。
  *
- * 用法：npm test（会先自动构建）
+ * 用法：先 npm run build，再 npm test（测试直接导入当前构建产物）
  */
 
 import fs from 'node:fs';
@@ -41,8 +41,8 @@ function check(name, cond, detail = '') {
 /**
  * 构造一次请求。
  *
- * 规则一律从远端拉取，所以默认就装一个规则桩，让测试离线且确定。
- * upstream 用于覆盖它（例如模拟订阅链接、或模拟拉取失败）。
+ * 用例显式选择远端规则时，用规则桩保持离线且确定；默认内置规则无需网络。
+ * upstream 用于覆盖规则桩（例如模拟订阅链接、或模拟拉取失败）。
  */
 const RULES_INI = [
   '[custom]',
@@ -69,15 +69,15 @@ const rulesStub = async (req) => {
 async function request(pathname, { ua, upstream, env } = {}) {
   const realFetch = globalThis.fetch;
   globalThis.fetch = upstream || rulesStub;
-  const realLog = console.log, realErr = console.error, realWarn = console.warn;
-  console.log = () => {}; console.error = () => {}; console.warn = () => {};
+  const realLog = console.log, realInfo = console.info, realErr = console.error, realWarn = console.warn;
+  console.log = () => {}; console.info = () => {}; console.error = () => {}; console.warn = () => {};
   try {
     const init = ua ? { headers: { 'User-Agent': ua } } : {};
     const res = await worker.fetch(new Request('https://example.com' + pathname, init), env || {}, {});
     return { status: res.status, headers: res.headers, body: await res.text() };
   } finally {
     globalThis.fetch = realFetch;
-    console.log = realLog; console.error = realErr; console.warn = realWarn;
+    console.log = realLog; console.info = realInfo; console.error = realErr; console.warn = realWarn;
   }
 }
 
@@ -181,10 +181,50 @@ const sub = (list, caseNo = 0) =>
   const dup = [
     'ss://' + b64('aes-256-gcm:a') + '@1.1.1.1:1111#同名',
     'ss://' + b64('aes-256-gcm:b') + '@2.2.2.2:2222#同名',
-    'ss://' + b64('aes-256-gcm:c') + '@1.1.1.1:1111#另一个',
+    'ss://' + b64('aes-256-gcm:a') + '@1.1.1.1:1111#另一个',
   ];
   const r = await request(sub(dup));
-  check('相同 server:port 被去重', r.status === 200 && !r.body.includes('另一个'), '去重未生效');
+  check('相同连接配置去重（忽略名称）', r.status === 200 && !r.body.includes('另一个'), '去重未生效');
+}
+{
+  // 同一 server:port 上可能是不同凭据，必须保留；重复名称采用稳定编号。
+  const sameEndpoint = [
+    'ss://' + b64('aes-256-gcm:first') + '@1.1.1.1:1111#同名',
+    'ss://' + b64('aes-256-gcm:second') + '@1.1.1.1:1111#同名',
+  ];
+  const r1 = await request(sub(sameEndpoint));
+  const r2 = await request(sub(sameEndpoint));
+  check('同地址不同凭据节点保留且重名后缀稳定',
+    r1.status === 200 && (r1.body.match(/server: 1\.1\.1\.1/g) || []).length === 2 &&
+      r1.body.includes('name: 同名-2') && r1.body === r2.body,
+    '两个节点未同时保留或生成结果不稳定');
+}
+{
+  let forbiddenFetches = 0;
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.includes('redirect.example.com')) {
+      forbiddenFetches++;
+      return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/admin' } });
+    }
+    return rulesStub(req);
+  };
+  const direct = await request(sub(['http://127.0.0.1/admin']), { upstream });
+  const redirected = await request(sub(['https://redirect.example.com/sub']), { upstream });
+  check('拒绝私网 URL 与指向私网的重定向',
+    direct.status === 404 && redirected.status === 404 && forbiddenFetches === 1,
+    `status=${direct.status}/${redirected.status}, redirect fetches=${forbiddenFetches}`);
+}
+{
+  const upstream = async (req) => {
+    const u = typeof req === 'string' ? req : req.url;
+    if (u.includes('large.example.com')) {
+      return new Response('x'.repeat(2 * 1024 * 1024 + 1), { status: 200, headers: { 'content-type': 'text/plain' } });
+    }
+    return rulesStub(req);
+  };
+  const r = await request(sub(['https://large.example.com/sub']), { upstream });
+  check('超出上限的订阅响应被拒绝', r.status === 404, 'status=' + r.status);
 }
 {
   const r = await request('/mykey/sub?target=clash&url=' + encodeURIComponent(NODES[0]), { env: { key: 'mykey' } });
