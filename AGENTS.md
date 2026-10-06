@@ -29,7 +29,6 @@ src/
 ├── protocols/            每个协议一个文件，各自导出 decode_xxx()
 └── pages/                静态页面：nginx.js（伪装首页）form.html（表单）favicon.js
 build/build.mjs           esbuild 构建入口（YAML/HTML 插件）
-test/smoke.mjs            冒烟测试（离线）
 test/mihomo-check.mjs     用真实 mihomo 内核校验产出配置
 zju-override.yaml         校园网覆写片段（构建时内联）
 ```
@@ -83,9 +82,10 @@ FINAL                         → MATCH,🐟 漏网之鱼
 上游分成两段，改的时候别只改一半：
 
 - **校内域名**（`*.zju.edu.cn` / `*.zjusec.com` / `*.cc98.org`）在公共 DNS 上查不到（或只给
-  公网入口），所以在覆写里用 `nameserver-policy` 指向 `10.10.0.21#🏫 校园网`。`#策略组` 是
-  mihomo 的 DNS over proxy 写法，查询跟着组走——组里默认 DIRECT，在校内网时直达校内 DNS；
-  切到 ZJUconnect 后由 zju-connect 转发，人在校外也能解析。
+  公网入口），所以在覆写里用 `nameserver-policy` 同时配置
+  `10.10.0.21#🏫 校园网` 和 `114.114.114.114`。`#策略组` 是 mihomo 的 DNS over proxy
+  写法，查询跟着组走——组里默认 DIRECT，在校内网时通常由校内 DNS 先返回；人在校外时校内
+  DNS 不可达，会自动采用 114 的结果。切到 ZJUconnect 后由 zju-connect 转发校内 DNS。
 - **例外：`webvpn.zju.edu.cn` 走公共 DNS**。它是校外门户，公共 DNS 本来就有解析记录
   （210.32.3.80），而且必须不依赖校内 DNS——不然校外（「校园网」组默认 DIRECT）查询直接
   失败，连登录页都打不开。覆写里用精确域名条目指回公共上游（`114.114.114.114` +
@@ -127,7 +127,7 @@ www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校
 组名走同一条代理。五个要点：
 
 - **兜底组的默认选中项是这张表的前提**。把 🐟 漏网之鱼 改成默认直连，那些没列出来的
-  站点就会静默变成直连，所以冒烟测试锁着它的候选顺序。反过来说，往表里加规则前先问
+  站点就会静默变成直连，所以要锁住它的候选顺序。反过来说，往表里加规则前先问
   「它的目标跟兜底一样吗」，一样就不必加。
 - **必应必须显式钉在直连**。它国内直连可达，但只靠 `GEOIP,CN` 兜的话，解析一旦落到
   海外边沿（IPv6、或上游给出 13.107.x 这类全球地址）就接不住，流量掉进兜底组走代理，
@@ -137,7 +137,7 @@ www.google.com --> [142.251.150.119 ...] A from tls://1.1.1.1:853 # fallback 校
   末尾有 `DOMAIN-KEYWORD,google`，而 `googlevideo.com` 也含 "google"，反过来 YouTube
   会被 AI 组抢走；测试里有专门一条盯这个。
 - **组名必须和 `src/config.js` 里的策略组对得上**。指向不存在的组时规则会被 `filter_rules`
-  丢掉，表现为「那类流量静默退回兜底」，不报错。冒烟测试逐条核对目标是否存在。
+  丢掉，表现为「那类流量静默退回兜底」，不报错。改动后用真实 mihomo 内核校验。
 - 展开时按整条规则去重（来源配置里有整整两段重复的 AI/学术规则），最后补一条
   `MATCH,🐟 漏网之鱼`；终结规则若因组名缺失被过滤掉，`resolve_rules` 会补回来——
   没有它就是「未匹配流量无处可去」。同段内被 DOMAIN-KEYWORD 覆盖的 DOMAIN-SUFFIX
@@ -219,20 +219,13 @@ Mihomo Party 都认这个协议。**`url=` 必须放在最后**：Clash Verge �
 ## 测试
 
 ```bash
-npm test            # 50 项冒烟测试，离线（用桩 fetch 模拟 ACL4SSR）
 npm run test:mihomo # 用本机 mihomo 内核校验产出配置，需要网络
 ```
 
-`npm test` **不会自动构建**（`dist/_worker.js` 是它测的对象），改完代码先 `npm run build`，
-否则跑的是上一版产物——表现为测试结果和你刚改的东西无关。
-
-**改动规则、策略组、覆写相关代码后必须跑 `npm run test:mihomo`。** 自写的检查器只能验证
-「你以为的」格式——之前规则组名位置写反、`URL-REGEX` 不受支持这两个 bug，冒烟测试全绿
-但内核直接拒绝，只有它能发现。内核路径取自 Clash Verge，没装则自动跳过。
-
-冒烟测试只留会挡住真 bug 的断言：格式约定、顺序前提、会崩或静默失效的行为。**不要往
-里加页面结构检查**（有没有某个 id、有没有引入 Bootstrap、页脚链接对不对）——改版就红，
-挡不住任何真实回归。改 `src/pages/form.html` 后请自己用浏览器按 390px 和桌面宽度各看一遍。
+**改动规则、策略组、覆写相关代码后必须跑 `npm run test:mihomo`。** 配置检查器只能验证
+「你以为的」格式——规则组名位置、内核支持的规则类型等问题，只有真实 mihomo 内核能确认。
+内核路径取自 Clash Verge，没装则自动跳过。改 `src/pages/form.html` 后请自己用浏览器按
+390px 和桌面宽度各看一遍。
 
 ## 前端
 

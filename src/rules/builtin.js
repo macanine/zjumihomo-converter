@@ -24,7 +24,7 @@
  * "google"，反过来就会被 AI 组抢走。
  *
  * 组名必须和 src/config.js 里的策略组对得上。引用不存在的组时规则会被
- * filter_rules 丢掉（mihomo 会拒绝加载引用未知组的配置），冒烟测试里有逐条核对的用例。
+ * filter_rules 丢掉（mihomo 会拒绝加载引用未知组的配置），改动后需用真实内核校验。
  */
 
 const BUILTIN_TABLE = [
