@@ -32,6 +32,7 @@ rules:
   - DOMAIN,vpn.zju.edu.cn,DIRECT
   - DOMAIN,rvpn.zju.edu.cn,DIRECT
   - DOMAIN,webvpn.zju.edu.cn,DIRECT
+  - DOMAIN-SUFFIX,nodeseek.com,DIRECT
   - DOMAIN-SUFFIX,zju.edu.cn,🏫 校园网
   - DOMAIN-SUFFIX,zjusec.com,🏫 校园网
   - DOMAIN-SUFFIX,cc98.org,🏫 校园网
@@ -68,7 +69,10 @@ dns:
     '+.zju.edu.cn': ['10.10.0.21#🏫 校园网', '114.114.114.114']
     '+.zjusec.com': ['10.10.0.21#🏫 校园网', '114.114.114.114']
     '+.cc98.org': ['10.10.0.21#🏫 校园网', '114.114.114.114']
+    # NodeSeek 已关闭 IPv6；使用公共 DNS 并返回真实地址，避免缓存的 IPv6 或 fake-ip 影响访问。
+    '+.nodeseek.com': ['114.114.114.114', 'tls://1.1.1.1:853']
   fake-ip-filter:
+    - '+.nodeseek.com'
     - '+.zju.edu.cn'
     - '+.zjusec.com'
     - '+.cc98.org'
