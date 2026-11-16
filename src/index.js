@@ -21,7 +21,11 @@ export default {
       const SUBINF = '/sub';   // 订阅转换接口
       let path = url.pathname.slice(key.length + 1);
       if (path.search(new RegExp('^(?:|\/(index.html?)?)$')) != -1) {
-        return new Response(form_html.replace('__SUB_URL__', url.origin + '/' + key + SUBINF + '?'), {
+        // 模板里 __SUB_URL__ 是内联脚本的一段源码，替换进去的必须是带引号的字面量：
+        // 拼裸 URL 会变成 `https://host/key/sub? + new URLSearchParams(...)`，
+        // 整段脚本语法错误，页面上的按钮随之全部失效。
+        let sub_url = JSON.stringify(url.origin + '/' + key + SUBINF + '?');
+        return new Response(form_html.replace('__SUB_URL__', () => sub_url), {
           status: 200,
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });

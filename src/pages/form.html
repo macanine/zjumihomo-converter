@@ -215,7 +215,7 @@ function processText() {
   if (!a) { tip.textContent = '请先粘贴订阅链接或节点'; document.getElementById('inputText').focus(); return; }
   button.disabled = true;
   button.textContent = '已生成';
-  js.url = a.split('\\n').join('|');
+  js.url = a.split('\n').join('|');
   js.target = 'clash';
   js.emoji = document.getElementById('emoji').value;
 
